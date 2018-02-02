@@ -15,16 +15,21 @@ struct {
 
 void Copter::read_control_switch()
 {
+    if (g.flight_mode_chan <= 0) {
+        // no flight mode channel
+        return;
+    }
+    
     uint32_t tnow_ms = millis();
 
     // calculate position of flight mode switch
     int8_t switch_position;
-    uint16_t rc5_in = RC_Channels::rc_channel(CH_5)->get_radio_in();
-    if      (rc5_in < 1231) switch_position = 0;
-    else if (rc5_in < 1361) switch_position = 1;
-    else if (rc5_in < 1491) switch_position = 2;
-    else if (rc5_in < 1621) switch_position = 3;
-    else if (rc5_in < 1750) switch_position = 4;
+    uint16_t mode_in = RC_Channels::rc_channel(g.flight_mode_chan-1)->get_radio_in();
+    if      (mode_in < 1231) switch_position = 0;
+    else if (mode_in < 1361) switch_position = 1;
+    else if (mode_in < 1491) switch_position = 2;
+    else if (mode_in < 1621) switch_position = 3;
+    else if (mode_in < 1750) switch_position = 4;
     else switch_position = 5;
 
     // store time that switch last moved
@@ -196,6 +201,9 @@ void Copter::init_aux_switch_function(int8_t ch_option, uint8_t ch_flag)
         case AUXSW_AVOID_ADSB:
         case AUXSW_PRECISION_LOITER:
         case AUXSW_AVOID_PROXIMITY:
+        case AUXSW_INVERTED:
+        case AUXSW_WINCH_ENABLE:
+        case AUXSW_RC_OVERRIDE_ENABLE:
             do_aux_switch_function(ch_option, ch_flag);
             break;
     }
@@ -560,10 +568,10 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
 #if PRECISION_LANDING == ENABLED
             switch (ch_flag) {
                 case AUX_SWITCH_HIGH:
-                    set_precision_loiter_enabled(true);
+                    mode_loiter.set_precision_loiter_enabled(true);
                     break;
                 case AUX_SWITCH_LOW:
-                    set_precision_loiter_enabled(false);
+                    mode_loiter.set_precision_loiter_enabled(false);
                     break;
             }
 #endif
@@ -603,6 +611,69 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                 // return to flight mode switch's flight mode if we are currently in RTL
                 if (control_mode == SMART_RTL) {
                     reset_control_switch();
+                }
+            }
+            break;
+            
+        case AUXSW_INVERTED:
+#if FRAME_CONFIG == HELI_FRAME
+            switch (ch_flag) {
+            case AUX_SWITCH_HIGH:
+                motors->set_inverted_flight(true);
+                attitude_control->set_inverted_flight(true);
+                heli_flags.inverted_flight = true;
+                break;
+            case AUX_SWITCH_LOW:
+                motors->set_inverted_flight(false);
+                attitude_control->set_inverted_flight(false);
+                heli_flags.inverted_flight = false;
+                break;
+            }
+#endif
+            break;
+
+        case AUXSW_WINCH_ENABLE:
+            switch (ch_flag) {
+                case AUX_SWITCH_HIGH:
+                    // high switch maintains current position
+                    g2.winch.release_length(0.0f);
+                    Log_Write_Event(DATA_WINCH_LENGTH_CONTROL);
+                    break;
+                default:
+                    // all other position relax winch
+                    g2.winch.relax();
+                    Log_Write_Event(DATA_WINCH_RELAXED);
+                    break;
+                }
+            break;
+
+        case AUXSW_WINCH_CONTROL:
+            switch (ch_flag) {
+                case AUX_SWITCH_LOW:
+                    // raise winch at maximum speed
+                    g2.winch.set_desired_rate(-g2.winch.get_rate_max());
+                    break;
+                case AUX_SWITCH_HIGH:
+                    // lower winch at maximum speed
+                    g2.winch.set_desired_rate(g2.winch.get_rate_max());
+                    break;
+                case AUX_SWITCH_MIDDLE:
+                default:
+                    g2.winch.set_desired_rate(0.0f);
+                    break;
+                }
+            break;
+
+        case AUXSW_RC_OVERRIDE_ENABLE:
+            // Allow or disallow RC_Override
+            switch (ch_flag) {
+                case AUX_SWITCH_HIGH: {
+                    ap.rc_override_enable = true;
+                    break;
+                }
+                case AUX_SWITCH_LOW: {
+                    ap.rc_override_enable = false;
+                    break;
                 }
             }
             break;

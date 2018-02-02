@@ -53,6 +53,7 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK(update_GPS_10Hz,        10,   2500),
     SCHED_TASK(update_alt,             10,   3400),
     SCHED_TASK(update_beacon,          50,     50),
+    SCHED_TASK(update_proximity,       50,     50),
     SCHED_TASK(update_visual_odom,     50,     50),
     SCHED_TASK(update_wheel_encoder,   20,     50),
     SCHED_TASK(update_compass,         10,   2000),
@@ -71,12 +72,15 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK(mount_update,           50,    600),
     SCHED_TASK(update_trigger,         50,    600),
     SCHED_TASK(gcs_failsafe_check,     10,    600),
+    SCHED_TASK(fence_check,            10,    100),
     SCHED_TASK(compass_accumulate,     50,    900),
+    SCHED_TASK(smart_rtl_update,        3,    100),
     SCHED_TASK(update_notify,          50,    300),
     SCHED_TASK(one_second_loop,         1,   3000),
     SCHED_TASK(compass_cal_update,     50,    100),
     SCHED_TASK(accel_cal_update,       10,    100),
     SCHED_TASK(dataflash_periodic,     50,    300),
+    SCHED_TASK(ins_periodic,           50,     50),
     SCHED_TASK(button_update,           5,    100),
     SCHED_TASK(stats_update,            1,    100),
     SCHED_TASK(crash_check,            10,   1000),
@@ -239,8 +243,6 @@ void Rover::update_compass(void)
         if (should_log(MASK_LOG_COMPASS)) {
             DataFlash.Log_Write_Compass(compass);
         }
-    } else {
-        ahrs.set_compass(nullptr);
     }
 }
 
@@ -253,9 +255,10 @@ void Rover::update_logging1(void)
         Log_Write_Attitude();
     }
 
-    if (should_log(MASK_LOG_CTUN)) {
-        Log_Write_Control_Tuning();
+    if (should_log(MASK_LOG_THR)) {
+        Log_Write_Throttle();
         Log_Write_Beacon();
+        Log_Write_Proximity();
     }
 
     if (should_log(MASK_LOG_NTUN)) {
@@ -269,9 +272,7 @@ void Rover::update_logging1(void)
 void Rover::update_logging2(void)
 {
     if (should_log(MASK_LOG_STEERING)) {
-        if (!control_mode->manual_steering()) {
-            Log_Write_Steering();
-        }
+        Log_Write_Steering();
     }
 
     if (should_log(MASK_LOG_RC)) {
@@ -361,6 +362,11 @@ void Rover::one_second_loop(void)
 void Rover::dataflash_periodic(void)
 {
     DataFlash.periodic_tasks();
+}
+
+void Rover::ins_periodic()
+{
+    ins.periodic();
 }
 
 void Rover::update_GPS_50Hz(void)

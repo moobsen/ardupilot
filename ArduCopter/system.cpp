@@ -48,6 +48,8 @@ void Copter::init_ardupilot()
     // load parameters from EEPROM
     load_parameters();
 
+    G_Dt = scheduler.get_loop_period_s();
+
     // initialise stats module
     g2.stats.init();
 
@@ -77,9 +79,12 @@ void Copter::init_ardupilot()
     g2.gripper.init();
 #endif
 
+    // init winch and wheel encoder
+    winch_init();
+
     // initialise notify system
     notify.init(true);
-    notify_flight_mode(control_mode);
+    notify_flight_mode();
 
     // initialise battery monitor
     battery.init();
@@ -171,7 +176,7 @@ void Copter::init_ardupilot()
 #endif
 
     attitude_control->parameter_sanity_check();
-    pos_control->set_dt(MAIN_LOOP_SECONDS);
+    pos_control->set_dt(scheduler.get_loop_period_s());
 
     // init the optical flow sensor
     init_optflow();
@@ -383,7 +388,7 @@ void Copter::update_auto_armed()
             return;
         }
         // if in stabilize or acro flight mode and throttle is zero, auto-armed should become false
-        if(mode_has_manual_throttle(control_mode) && ap.throttle_zero && !failsafe.radio) {
+        if(flightmode->has_manual_throttle() && ap.throttle_zero && !failsafe.radio) {
             set_auto_armed(false);
         }
 #if FRAME_CONFIG == HELI_FRAME
@@ -439,7 +444,8 @@ bool Copter::should_log(uint32_t mask)
 void Copter::set_default_frame_class()
 {
     if (FRAME_CONFIG == HELI_FRAME &&
-        g2.frame_class.get() != AP_Motors::MOTOR_FRAME_HELI_DUAL) {
+        g2.frame_class.get() != AP_Motors::MOTOR_FRAME_HELI_DUAL &&
+        g2.frame_class.get() != AP_Motors::MOTOR_FRAME_HELI_QUAD) {
         g2.frame_class.set(AP_Motors::MOTOR_FRAME_HELI);
     }
 }
@@ -459,6 +465,7 @@ uint8_t Copter::get_frame_mav_type()
             return MAV_TYPE_OCTOROTOR;
         case AP_Motors::MOTOR_FRAME_HELI:
         case AP_Motors::MOTOR_FRAME_HELI_DUAL:
+        case AP_Motors::MOTOR_FRAME_HELI_QUAD:
             return MAV_TYPE_HELICOPTER;
         case AP_Motors::MOTOR_FRAME_TRI:
             return MAV_TYPE_TRICOPTER;
@@ -491,6 +498,8 @@ const char* Copter::get_frame_string()
             return "HELI";
         case AP_Motors::MOTOR_FRAME_HELI_DUAL:
             return "HELI_DUAL";
+        case AP_Motors::MOTOR_FRAME_HELI_QUAD:
+            return "HELI_QUAD";
         case AP_Motors::MOTOR_FRAME_TRI:
             return "TRI";
         case AP_Motors::MOTOR_FRAME_SINGLE:
@@ -547,6 +556,12 @@ void Copter::allocate_motors(void)
             motors_var_info = AP_MotorsHeli_Dual::var_info;
             AP_Param::set_frame_type_flags(AP_PARAM_FRAME_HELI);
             break;
+
+        case AP_Motors::MOTOR_FRAME_HELI_QUAD:
+            motors = new AP_MotorsHeli_Quad(copter.scheduler.get_loop_rate_hz());
+            motors_var_info = AP_MotorsHeli_Quad::var_info;
+            AP_Param::set_frame_type_flags(AP_PARAM_FRAME_HELI);
+            break;
             
         case AP_Motors::MOTOR_FRAME_HELI:
         default:
@@ -569,10 +584,10 @@ void Copter::allocate_motors(void)
     const struct AP_Param::GroupInfo *ac_var_info;
 
 #if FRAME_CONFIG != HELI_FRAME
-    attitude_control = new AC_AttitudeControl_Multi(*ahrs_view, aparm, *motors, MAIN_LOOP_SECONDS);
+    attitude_control = new AC_AttitudeControl_Multi(*ahrs_view, aparm, *motors, scheduler.get_loop_period_s());
     ac_var_info = AC_AttitudeControl_Multi::var_info;
 #else
-    attitude_control = new AC_AttitudeControl_Heli(*ahrs_view, aparm, *motors, MAIN_LOOP_SECONDS);
+    attitude_control = new AC_AttitudeControl_Heli(*ahrs_view, aparm, *motors, scheduler.get_loop_period_s());
     ac_var_info = AC_AttitudeControl_Heli::var_info;
 #endif
     if (attitude_control == nullptr) {
@@ -580,9 +595,7 @@ void Copter::allocate_motors(void)
     }
     AP_Param::load_object_from_eeprom(attitude_control, ac_var_info);
         
-    pos_control = new AC_PosControl(*ahrs_view, inertial_nav, *motors, *attitude_control,
-                                    g.p_alt_hold, g.p_vel_z, g.pid_accel_z,
-                                    g.p_pos_xy, g.pi_vel_xy);
+    pos_control = new AC_PosControl(*ahrs_view, inertial_nav, *motors, *attitude_control);
     if (pos_control == nullptr) {
         AP_HAL::panic("Unable to allocate PosControl");
     }

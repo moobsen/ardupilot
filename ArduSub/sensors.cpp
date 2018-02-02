@@ -20,6 +20,12 @@ void Sub::read_barometer(void)
     }
 }
 
+// try to accumulate a baro reading
+void Sub::barometer_accumulate(void)
+{
+    barometer.accumulate();
+}
+
 void Sub::init_rangefinder(void)
 {
 #if RANGEFINDER_ENABLED == ENABLED
@@ -174,7 +180,7 @@ void Sub::read_battery(void)
     }
 
     // update motors with voltage and current
-    if (battery.get_type() != AP_BattMonitor::BattMonitor_TYPE_NONE) {
+    if (battery.get_type() != AP_BattMonitor_Params::BattMonitor_TYPE_NONE) {
         motors.set_voltage(battery.voltage());
     }
 

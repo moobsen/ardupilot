@@ -8,6 +8,7 @@ import waflib
 from waflib.Configure import conf
 
 _board_classes = {}
+_board = None
 
 class BoardMeta(type):
     def __init__(cls, name, bases, dct):
@@ -85,6 +86,7 @@ class Board:
             '-Wno-unused-parameter',
             '-Wno-redundant-decls',
             '-Wno-unknown-pragmas',
+            '-Wno-trigraphs',
         ]
 
         if 'clang' in cfg.env.COMPILER_CC:
@@ -102,6 +104,7 @@ class Board:
             env.CFLAGS += [
                 '-g',
                 '-O0',
+                '-Wno-trigraphs',
             ]
 
         env.CXXFLAGS += [
@@ -130,6 +133,7 @@ class Board:
             '-Werror=init-self',
             '-Werror=switch',
             '-Wfatal-errors',
+            '-Wno-trigraphs',
         ]
 
         if 'clang++' in cfg.env.COMPILER_CXX:
@@ -188,13 +192,17 @@ class Board:
 
     def build(self, bld):
         bld.ap_version_append_str('GIT_VERSION', bld.git_head_hash(short=True))
+        import time
+        ltime = time.localtime()
+        bld.ap_version_append_int('BUILD_DATE_YEAR', ltime.tm_year)
+        bld.ap_version_append_int('BUILD_DATE_MONTH', ltime.tm_mon)
+        bld.ap_version_append_int('BUILD_DATE_DAY', ltime.tm_mday)
 
 Board = BoardMeta('Board', Board.__bases__, dict(Board.__dict__))
 
 def get_boards_names():
     return sorted(list(_board_classes.keys()))
 
-_board = None
 @conf
 def get_board(ctx):
     global _board
@@ -239,6 +247,165 @@ class sitl(Board):
                 'winmm',
             ]
 
+class chibios(Board):
+    toolchain = 'arm-none-eabi'
+
+    def configure_env(self, cfg, env):
+        super(chibios, self).configure_env(cfg, env)
+
+        env.BOARD = self.name
+
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD = 'HAL_BOARD_CHIBIOS',
+            HAVE_OCLOEXEC = 0,
+            HAVE_STD_NULLPTR_T = 0,
+        )
+
+        env.AP_LIBRARIES += [
+            'AP_HAL_ChibiOS',
+        ]
+
+        env.CXXFLAGS += [
+            '-Wlogical-op',
+            '-Wframe-larger-than=1300',
+            '-fsingle-precision-constant',
+            '-Wno-attributes',
+            '-Wno-error=double-promotion',
+            '-Wno-error=missing-declarations',
+            '-Wno-error=float-equal',
+            '-Wno-error=undef',
+            '-Wno-error=cpp',
+            '-Wno-cast-align',
+            '-fno-exceptions',
+            '-fno-rtti',
+            '-fno-threadsafe-statics',
+            '-Wall',
+            '-Wextra',
+            '-Wno-sign-compare',
+            '-Wfloat-equal',
+            '-Wpointer-arith',
+            '-Wmissing-declarations',
+            '-Wno-unused-parameter',
+            '-Werror=array-bounds',
+            '-Wfatal-errors',
+            '-Werror=unused-variable',
+            '-Werror=uninitialized',
+            '-Werror=init-self',
+            '-Wframe-larger-than=1024',
+            '-Werror=unused-but-set-variable',
+            '-Wdouble-promotion',
+            '-Wno-missing-field-initializers',
+            '-Wno-trigraphs',
+            '-Os',
+            '-g',
+            '-fno-strict-aliasing',
+            '-fomit-frame-pointer',
+            '-falign-functions=16',
+            '-ffunction-sections',
+            '-fdata-sections',
+            '-fno-strength-reduce',
+            '-fno-builtin-printf',
+            '-fno-builtin-fprintf',
+            '-fno-builtin-vprintf',
+            '-fno-builtin-vfprintf',
+            '-fno-builtin-puts',
+            '-mcpu=cortex-m4',
+            '-mno-thumb-interwork',
+            '-mthumb',
+            '-mfpu=fpv4-sp-d16',
+            '-mfloat-abi=hard'
+        ]
+
+        bldnode = cfg.bldnode.make_node(self.name)
+        env.BUILDROOT = bldnode.make_node('').abspath()
+
+        env.LINKFLAGS = [
+            '-mcpu=cortex-m4',
+            '-Os',
+            '-g',
+            '-fomit-frame-pointer',
+            '-falign-functions=16',
+            '-ffunction-sections',
+            '-fdata-sections',
+            '-u_port_lock',
+            '-u_port_unlock',
+            '-u_exit',
+            '-u_kill',
+            '-u_getpid',
+            '-u_errno',
+            '-uchThdExit',
+            '-u_printf_float',
+            '-fno-common',
+            '-nostartfiles',
+            '-mfloat-abi=hard',
+            '-mfpu=fpv4-sp-d16',
+            '-mno-thumb-interwork',
+            '-mthumb',
+            '-L%s' % cfg.srcnode.make_node('modules/ChibiOS/os/common/startup/ARMCMx/compilers/GCC/ld/').abspath(),
+            '-L%s' % cfg.srcnode.make_node('libraries/AP_HAL_ChibiOS/hwdef/common/').abspath(),
+            '-Wl,--gc-sections,--no-warn-mismatch,--library-path=/ld,--script=%s/ldscript.ld,--defsym=__process_stack_size__=0x400,--defsym=__main_stack_size__=0x400' % env.BUILDROOT,
+        ]
+
+        env.LIB += ['gcc', 'm']
+        env.GIT_SUBMODULES += [
+            'ChibiOS',
+        ]
+        cfg.load('chibios')
+        env.CHIBIOS_FATFS_FLAG = 'USE_FATFS=yes'
+
+    def build(self, bld):
+        super(chibios, self).build(bld)
+        bld.load('chibios')
+
+class skyviper_f412(chibios):
+    name = 'skyviper-f412'
+    def configure_env(self, cfg, env):
+        super(skyviper_f412, self).configure_env(cfg, env)
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_SKYVIPER_F412',
+        )
+        env.CHIBIOS_FATFS_FLAG = 'USE_FATFS=no'
+        env.DEFAULT_PARAMETERS = '../../Tools/Frame_params/SkyViper-F412/defaults.parm'
+
+class fmuv3(chibios):
+    name = 'fmuv3'
+    def configure_env(self, cfg, env):
+        super(fmuv3, self).configure_env(cfg, env)
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_FMUV3',
+        )
+
+class skyviper_v2450(fmuv3):
+    name = 'skyviper-v2450'
+    def configure_env(self, cfg, env):
+        super(skyviper_v2450, self).configure_env(cfg, env)
+        env.DEFAULT_PARAMETERS = '../../Tools/Frame_params/SkyViper-2450GPS/defaults.parm'
+
+class fmuv4(chibios):
+    name = 'fmuv4'
+    def configure_env(self, cfg, env):
+        super(fmuv4, self).configure_env(cfg, env)
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_FMUV4',
+        )
+
+class mindpx_v2(chibios):
+    name = 'mindpx-v2'
+    def configure_env(self, cfg, env):
+        super(mindpx_v2, self).configure_env(cfg, env)
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_MINDPXV2',
+        )
+
+class sparky2(chibios):
+    name = 'sparky2'
+    def configure_env(self, cfg, env):
+        super(sparky2, self).configure_env(cfg, env)
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_SPARKY2',
+        )
+        env.CHIBIOS_FATFS_FLAG = 'USE_FATFS=no'
+
 class linux(Board):
     def configure_env(self, cfg, env):
         super(linux, self).configure_env(cfg, env)
@@ -265,10 +432,13 @@ class linux(Board):
         cfg.check_libiio(env)
 
         env.LINKFLAGS += ['-pthread',]
-        env.AP_LIBRARIES = [
+        env.AP_LIBRARIES += [
             'AP_HAL_Linux',
         ]
 
+        if self.with_uavcan:
+            cfg.define('UAVCAN_EXCEPTIONS', 0)
+    
     def build(self, bld):
         super(linux, self).build(bld)
         if bld.options.upload:
@@ -315,6 +485,16 @@ class navio2(linux):
             CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_NAVIO2',
         )
 
+class edge(linux):
+    toolchain = 'arm-linux-gnueabihf'
+
+    def configure_env(self, cfg, env):
+        super(edge, self).configure_env(cfg, env)
+
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_EDGE',
+        )
+
 class zynq(linux):
     toolchain = 'arm-xilinx-linux-gnueabi'
 
@@ -353,6 +533,16 @@ class blue(linux):
 
         env.DEFINES.update(
             CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_BLUE',
+        )
+
+class pocket(linux):
+    toolchain = 'arm-linux-gnueabihf'
+
+    def configure_env(self, cfg, env):
+        super(pocket, self).configure_env(cfg, env)
+
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_POCKET',
         )
 
 class pxf(linux):
@@ -433,6 +623,16 @@ class aero(linux):
             CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_AERO',
         )
 
+class rst_zynq(linux):
+    toolchain = 'arm-linux-gnueabihf'
+
+    def configure_env(self, cfg, env):
+        super(rst_zynq, self).configure_env(cfg, env)
+
+        env.DEFINES.update(
+            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_RST_ZYNQ',
+        )
+        
 class px4(Board):
     abstract = True
     toolchain = 'arm-none-eabi'

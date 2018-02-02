@@ -22,7 +22,11 @@
 #include "AP_RangeFinder_BBB_PRU.h"
 #include "AP_RangeFinder_LightWareI2C.h"
 #include "AP_RangeFinder_LightWareSerial.h"
+#if (CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BEBOP || \
+     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_DISCO) &&      \
+    defined(HAVE_LIBIIO)
 #include "AP_RangeFinder_Bebop.h"
+#endif
 #include "AP_RangeFinder_MAVLink.h"
 #include "AP_RangeFinder_LeddarOne.h"
 #include "AP_RangeFinder_uLanding.h"
@@ -614,12 +618,24 @@ void RangeFinder::detect_instance(uint8_t instance)
         }
         break;
     case RangeFinder_TYPE_MBI2C:
-        _add_backend(AP_RangeFinder_MaxsonarI2CXL::detect(state[instance]));
+        if (!_add_backend(AP_RangeFinder_MaxsonarI2CXL::detect(state[instance],
+                                                hal.i2c_mgr->get_device(1, AP_RANGE_FINDER_MAXSONARI2CXL_DEFAULT_ADDR)))) {
+            _add_backend(AP_RangeFinder_MaxsonarI2CXL::detect(state[instance],
+                                               hal.i2c_mgr->get_device(0, AP_RANGE_FINDER_MAXSONARI2CXL_DEFAULT_ADDR)));
+        }
         break;
     case RangeFinder_TYPE_LWI2C:
         if (state[instance].address) {
+#ifdef HAL_RANGEFINDER_LIGHTWARE_I2C_BUS
             _add_backend(AP_RangeFinder_LightWareI2C::detect(state[instance],
                 hal.i2c_mgr->get_device(HAL_RANGEFINDER_LIGHTWARE_I2C_BUS, state[instance].address)));
+#else
+            if (!_add_backend(AP_RangeFinder_LightWareI2C::detect(state[instance],
+                                                                  hal.i2c_mgr->get_device(1, state[instance].address)))) {
+                _add_backend(AP_RangeFinder_LightWareI2C::detect(state[instance],
+                                                                 hal.i2c_mgr->get_device(0, state[instance].address)));
+            }
+#endif
         }
         break;
     case RangeFinder_TYPE_TRI2C:

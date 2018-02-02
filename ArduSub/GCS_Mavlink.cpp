@@ -451,7 +451,7 @@ void Sub::send_pid_tuning(mavlink_channel_t chan)
         }
     }
     if (g.gcs_pid_mask & 8) {
-        const DataFlash_Class::PID_Info &pid_info = g.pid_accel_z.get_pid_info();
+        const DataFlash_Class::PID_Info &pid_info = pos_control.get_accel_z_pid().get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_ACCZ,
                                     pid_info.desired*0.01f,
                                     -(ahrs.get_accel_ef_blended().z + GRAVITY_MSS),
@@ -871,7 +871,7 @@ void GCS_MAVLINK_Sub::handle_change_alt_request(AP_Mission::Mission_Command &cmd
 
 void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
 {
-    uint8_t result = MAV_RESULT_FAILED;         // assume failure.  Each messages id is responsible for return ACK or NAK if required
+    MAV_RESULT result = MAV_RESULT_FAILED;         // assume failure.  Each messages id is responsible for return ACK or NAK if required
 
     switch (msg->msgid) {
 
@@ -1187,6 +1187,9 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
                 } else {
                     result = MAV_RESULT_FAILED;
                 }
+            } else if (is_equal(packet.param5,4.0f)) {
+                // simple accel calibration
+                result = sub.ins.simple_accel_cal(sub.ahrs);
             } else if (is_equal(packet.param6,1.0f)) {
                 // compassmot calibration
                 //result = sub.mavlink_compassmot(chan);
@@ -1226,12 +1229,12 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
             if (is_equal(packet.param1,1.0f) || is_equal(packet.param1,3.0f)) {
                 // Send an invalid signal to the motors to prevent spinning due to neutral (1500) pwm pulse being cut short
                 // For that matter, send an invalid signal to all channels to prevent undesired/unexpected behavior
-                hal.rcout->cork();
+                SRV_Channels::cork();
                 for (int i=0; i<NUM_RC_CHANNELS; i++) {
                     // Set to 1 because 0 is interpreted as flag to ignore update
                     hal.rcout->write(i, 1);
                 }
-                hal.rcout->push();
+                SRV_Channels::push();
 
                 result = MAV_RESULT_ACCEPTED;
                 // send ack before we reboot
@@ -1395,11 +1398,18 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
 
         // send request
         if (!pos_ignore && !vel_ignore && acc_ignore) {
-            sub.guided_set_destination_posvel(pos_vector, vel_vector);
+            if (sub.guided_set_destination_posvel(pos_vector, vel_vector)) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
+                result = MAV_RESULT_FAILED;
+            }
         } else if (pos_ignore && !vel_ignore && acc_ignore) {
             sub.guided_set_velocity(vel_vector);
+            result = MAV_RESULT_ACCEPTED;
         } else if (!pos_ignore && vel_ignore && acc_ignore) {
-            if (!sub.guided_set_destination(pos_vector)) {
+            if (sub.guided_set_destination(pos_vector)) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
                 result = MAV_RESULT_FAILED;
             }
         } else {
@@ -1440,7 +1450,7 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
          * bool yaw_rate_ignore = packet.type_mask & MAVLINK_SET_POS_TYPE_MASK_YAW_RATE_IGNORE;
          */
 
-        Vector3f pos_ned;
+        Vector3f pos_neu_cm;  // position (North, East, Up coordinates) in centimeters
 
         if (!pos_ignore) {
             // sanity check location
@@ -1470,15 +1480,22 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
                 loc.flags.terrain_alt = false;
                 break;
             }
-            pos_ned = sub.pv_location_to_vector(loc);
+            pos_neu_cm = sub.pv_location_to_vector(loc);
         }
 
         if (!pos_ignore && !vel_ignore && acc_ignore) {
-            sub.guided_set_destination_posvel(pos_ned, Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f));
+            if (sub.guided_set_destination_posvel(pos_neu_cm, Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f))) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
+                result = MAV_RESULT_FAILED;
+            }
         } else if (pos_ignore && !vel_ignore && acc_ignore) {
             sub.guided_set_velocity(Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f));
+            result = MAV_RESULT_ACCEPTED;
         } else if (!pos_ignore && vel_ignore && acc_ignore) {
-            if (!sub.guided_set_destination(pos_ned)) {
+            if (sub.guided_set_destination(pos_neu_cm)) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
                 result = MAV_RESULT_FAILED;
             }
         } else {
@@ -1623,11 +1640,6 @@ Compass *GCS_MAVLINK_Sub::get_compass() const
 AP_Mission *GCS_MAVLINK_Sub::get_mission()
 {
     return &sub.mission;
-}
-
-AP_GPS *GCS_MAVLINK_Sub::get_gps() const
-{
-    return &sub.gps;
 }
 
 AP_Camera *GCS_MAVLINK_Sub::get_camera() const

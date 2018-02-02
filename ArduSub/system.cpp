@@ -35,14 +35,14 @@ void Sub::init_ardupilot()
     BoardConfig_CAN.init();
 #endif
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if AP_FEATURE_BOARD_DETECT
     // Detection won't work until after BoardConfig.init()
     switch (AP_BoardConfig::get_board_type()) {
     case AP_BoardConfig::PX4_BOARD_PIXHAWK2:
-        AP_Param::set_default_by_name("GND_EXT_BUS", 0);
+        AP_Param::set_by_name("GND_EXT_BUS", 0);
         break;
     default:
-        AP_Param::set_default_by_name("GND_EXT_BUS", 1);
+        AP_Param::set_by_name("GND_EXT_BUS", 1);
         break;
     }
 #else
@@ -229,7 +229,7 @@ void Sub::startup_INS_ground()
     ahrs.reset();
 }
 
-// calibrate gyros - returns true if succesfully calibrated
+// calibrate gyros - returns true if successfully calibrated
 bool Sub::calibrate_gyros()
 {
     // gyro offset calibration
