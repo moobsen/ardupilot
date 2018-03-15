@@ -212,12 +212,14 @@ bool AP_Arming_Copter::parameter_checks(bool display_failure)
         }
 
         // acro balance parameter check
+#if MODE_ACRO_ENABLED == ENABLED
         if ((copter.g.acro_balance_roll > copter.attitude_control->get_angle_roll_p().kP()) || (copter.g.acro_balance_pitch > copter.attitude_control->get_angle_pitch_p().kP())) {
             if (display_failure) {
                 gcs().send_text(MAV_SEVERITY_CRITICAL,"PreArm: ACRO_BAL_ROLL/PITCH");
             }
             return false;
         }
+#endif
 
         #if RANGEFINDER_ENABLED == ENABLED && OPTFLOW == ENABLED
         // check range finder if optflow enabled
@@ -242,12 +244,14 @@ bool AP_Arming_Copter::parameter_checks(bool display_failure)
         }
 
         // check adsb avoidance failsafe
+#if ADSB_ENABLED == ENABLE
         if (copter.failsafe.adsb) {
             if (display_failure) {
                 gcs().send_text(MAV_SEVERITY_CRITICAL,"PreArm: ADSB threat detected");
             }
             return false;
         }
+#endif
 
         // check for something close to vehicle
         if (!pre_arm_proximity_check(display_failure)) {
@@ -559,6 +563,7 @@ bool AP_Arming_Copter::arm_checks(bool display_failure, bool arming_from_gcs)
         return false;
     }
 
+#ifndef ALLOW_ARM_NO_COMPASS
     // check compass health
     if (!_compass.healthy()) {
         if (display_failure) {
@@ -566,6 +571,7 @@ bool AP_Arming_Copter::arm_checks(bool display_failure, bool arming_from_gcs)
         }
         return false;
     }
+#endif
 
     if (_compass.is_calibrating()) {
         if (display_failure) {
@@ -630,6 +636,7 @@ bool AP_Arming_Copter::arm_checks(bool display_failure, bool arming_from_gcs)
     }
 
     // check adsb
+#if ADSB_ENABLED == ENABLE
     if ((checks_to_perform == ARMING_CHECK_ALL) || (checks_to_perform & ARMING_CHECK_PARAMETERS)) {
         if (copter.failsafe.adsb) {
             if (display_failure) {
@@ -638,6 +645,7 @@ bool AP_Arming_Copter::arm_checks(bool display_failure, bool arming_from_gcs)
             return false;
         }
     }
+#endif
 
     // check throttle
     if ((checks_to_perform == ARMING_CHECK_ALL) || (checks_to_perform & ARMING_CHECK_RC)) {

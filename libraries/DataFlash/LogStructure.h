@@ -60,7 +60,7 @@ struct PACKED log_Format_Units {
 
 struct UnitStructure {
     const char ID;
-    const char unit[64];
+    const char *unit;
 };
 
 struct MultiplierStructure {
@@ -84,6 +84,7 @@ const struct UnitStructure log_Units[] = {
     { 'G', "Gauss" },         // Gauss is not an SI unit, but 1 tesla = 10000 gauss so a simple replacement is not possible here
     { 'h', "degheading" },    // 0.? to 359.?
     { 'i', "A.s" },           // Ampere second
+    { 'J', "W.s" },           // Joule (Watt second)
     // { 'l', "l" },          // litres
     { 'L', "rad/s/s" },       // radians per second per second
     { 'm', "m" },             // metres
@@ -91,6 +92,7 @@ const struct UnitStructure log_Units[] = {
     // { 'N', "N" },          // Newton
     { 'o', "m/s/s" },         // metres per second per second
     { 'O', "degC" },          // degrees Celsius. Not SI, but Kelvin is too cumbersome for most users
+    { '%', "%" },             // percent
     { 'S', "satellites" },    // number of satellites
     { 's', "s" },             // seconds
     { 'q', "rpm" },           // rounds per minute. Not SI, but sometimes more intuitive than Hertz
@@ -111,9 +113,9 @@ const struct UnitStructure log_Units[] = {
 // tl;dr a GCS shouldn't/mustn't infer any scaling from the unit name
 
 const struct MultiplierStructure log_Multipliers[] = {
-// <leave a gap here, just in case....>
     { '-', 0 },       // no multiplier e.g. a string
     { '?', 1 },       // multipliers which haven't been worked out yet....
+// <leave a gap here, just in case....>
     { '2', 1e2 },
     { '1', 1e1 },
     { '0', 1e0 },
@@ -126,6 +128,7 @@ const struct MultiplierStructure log_Multipliers[] = {
     { 'G', 1e-7 },
 // <leave a gap here, just in case....>
     { '!', 3.6 }, // (ampere*second => milliampere*hour) and (km/h => m/s)
+    { '/', 3600 }, // (ampere*second => ampere*hour)
 };
 
 struct PACKED log_Parameter {
@@ -666,6 +669,7 @@ struct PACKED log_Current {
     float    voltage_resting;
     float    current_amps;
     float    current_total;
+    float    consumed_wh;
     int16_t  temperature; // degrees C * 100
     float    resistance;
 };
@@ -1007,6 +1011,17 @@ struct PACKED log_Proximity {
     float closest_dist;
 };
 
+struct PACKED log_Performance {
+    LOG_PACKET_HEADER;
+    uint64_t time_us;
+    uint16_t num_long_running;
+    uint16_t num_loops;
+    uint32_t max_time;
+    uint16_t ins_error_count;
+    uint32_t mem_avail;
+    uint16_t load;
+};
+
 struct PACKED log_SRTL {
     LOG_PACKET_HEADER;
     uint64_t time_us;
@@ -1110,10 +1125,10 @@ struct PACKED log_DSTL {
 #define QUAT_UNITS  "s????"
 #define QUAT_MULTS  "F????"
 
-#define CURR_LABELS "TimeUS,Volt,VoltR,Curr,CurrTot,Temp,Res"
-#define CURR_FMT    "Qffffcf"
-#define CURR_UNITS  "sv?A?Ow"
-#define CURR_MULTS  "F??????"
+#define CURR_LABELS "TimeUS,Volt,VoltR,Curr,CurrTot,EnrgTot,Temp,Res"
+#define CURR_FMT    "Qfffffcf"
+#define CURR_UNITS  "sv?A?JOw"
+#define CURR_MULTS  "F????/??"
 
 #define CURR_CELL_LABELS "TimeUS,Volt,V1,V2,V3,V4,V5,V6,V7,V8,V9,V10"
 #define CURR_CELL_FMT    "QfHHHHHHHHHH"
@@ -1219,6 +1234,8 @@ Format characters in the format string for binary log messages
       "BCN", "QBBfffffff",  "TimeUS,Health,Cnt,D0,D1,D2,D3,PosX,PosY,PosZ", "s--mmmmmmm", "F--BBBBBBB" }, \
     { LOG_PROXIMITY_MSG, sizeof(log_Proximity), \
       "PRX", "QBfffffffffff", "TimeUS,Health,D0,D45,D90,D135,D180,D225,D270,D315,DUp,CAn,CDis", "s-mmmmmmmmmhm", "F-BBBBBBBBB00" }, \
+    { LOG_PERFORMANCE_MSG, sizeof(log_Performance),                     \
+      "PM",  "QHHIHIH", "TimeUS,NLon,NLoop,MaxT,INSErr,Mem,Load", "s----b%", "F----0A" }, \
     { LOG_SRTL_MSG, sizeof(log_SRTL), \
       "SRTL", "QBHHBfff", "TimeUS,Active,NumPts,MaxPts,Action,N,E,D", "s----mmm", "F----000" }
 
@@ -1395,11 +1412,40 @@ Format characters in the format string for binary log messages
 
 #define LOG_COMMON_STRUCTURES LOG_BASE_STRUCTURES, LOG_EXTRA_STRUCTURES, LOG_SBP_STRUCTURES
 
-// message types 0 to 128 reversed for vehicle specific use
+// message types 0 to 63 reserved for vehicle specific use
 
 // message types for common messages
 enum LogMessages {
-    LOG_FORMAT_MSG = 128,
+    LOG_NKF1_MSG = 64,
+    LOG_NKF2_MSG,
+    LOG_NKF3_MSG,
+    LOG_NKF4_MSG,
+    LOG_NKF5_MSG,
+    LOG_NKF6_MSG,
+    LOG_NKF7_MSG,
+    LOG_NKF8_MSG,
+    LOG_NKF9_MSG,
+    LOG_NKF10_MSG,
+    LOG_NKQ1_MSG,
+    LOG_NKQ2_MSG,
+    LOG_XKF1_MSG,
+    LOG_XKF2_MSG,
+    LOG_XKF3_MSG,
+    LOG_XKF4_MSG,
+    LOG_XKF5_MSG,
+    LOG_XKF6_MSG,
+    LOG_XKF7_MSG,
+    LOG_XKF8_MSG,
+    LOG_XKF9_MSG,
+    LOG_XKF10_MSG,
+    LOG_XKQ1_MSG,
+    LOG_XKQ2_MSG,
+    LOG_XKFD_MSG,
+    LOG_XKV1_MSG,
+    LOG_XKV2_MSG,
+
+    LOG_FORMAT_MSG = 128, // this must remain #128
+
     LOG_PARAMETER_MSG,
     LOG_GPS_MSG,
     LOG_GPS2_MSG,
@@ -1471,33 +1517,6 @@ enum LogMessages {
     LOG_GPAB_MSG,
     LOG_RFND_MSG,
     LOG_BAR3_MSG,
-    LOG_NKF1_MSG,
-    LOG_NKF2_MSG,
-    LOG_NKF3_MSG,
-    LOG_NKF4_MSG,
-    LOG_NKF5_MSG,
-    LOG_NKF6_MSG,
-    LOG_NKF7_MSG,
-    LOG_NKF8_MSG,
-    LOG_NKF9_MSG,
-    LOG_NKF10_MSG,
-    LOG_NKQ1_MSG,
-    LOG_NKQ2_MSG,
-    LOG_XKF1_MSG,
-    LOG_XKF2_MSG,
-    LOG_XKF3_MSG,
-    LOG_XKF4_MSG,
-    LOG_XKF5_MSG,
-    LOG_XKF6_MSG,
-    LOG_XKF7_MSG,
-    LOG_XKF8_MSG,
-    LOG_XKF9_MSG,
-    LOG_XKF10_MSG,
-    LOG_XKQ1_MSG,
-    LOG_XKQ2_MSG,
-    LOG_XKFD_MSG,
-    LOG_XKV1_MSG,
-    LOG_XKV2_MSG,
     LOG_DF_MAV_STATS,
     LOG_FORMAT_UNITS_MSG,
     LOG_UNIT_MSG,
@@ -1527,8 +1546,11 @@ enum LogMessages {
     LOG_ISBH_MSG,
     LOG_ISBD_MSG,
     LOG_ASP2_MSG,
-
+    LOG_PERFORMANCE_MSG,
+    _LOG_LAST_MSG_
 };
+
+static_assert(_LOG_LAST_MSG_ <= 255, "Too many message formats");
 
 enum LogOriginType {
     ekf_origin = 0,

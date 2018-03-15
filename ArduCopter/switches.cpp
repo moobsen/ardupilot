@@ -78,7 +78,7 @@ void Copter::read_control_switch()
 // check_if_auxsw_mode_used - Check to see if any of the Aux Switches are set to a given mode.
 bool Copter::check_if_auxsw_mode_used(uint8_t auxsw_mode_check)
 {
-    bool ret = g.ch7_option == auxsw_mode_check || g.ch8_option == auxsw_mode_check || g.ch9_option == auxsw_mode_check 
+    bool ret = g.ch7_option == auxsw_mode_check || g.ch8_option == auxsw_mode_check || g.ch9_option == auxsw_mode_check
                 || g.ch10_option == auxsw_mode_check || g.ch11_option == auxsw_mode_check || g.ch12_option == auxsw_mode_check;
 
     return ret;
@@ -180,7 +180,7 @@ void Copter::init_aux_switches()
 
 // init_aux_switch_function - initialize aux functions
 void Copter::init_aux_switch_function(int8_t ch_option, uint8_t ch_flag)
-{    
+{
     // init channel options
     switch(ch_option) {
         case AUXSW_SIMPLE_MODE:
@@ -249,6 +249,7 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
             }
             break;
 
+#if MODE_AUTO_ENABLED == ENABLED
         case AUXSW_SAVE_WP:
             // save waypoint when switch is brought high
             if (ch_flag == AUX_SWITCH_HIGH) {
@@ -303,6 +304,13 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
             }
             break;
 
+        case AUXSW_MISSION_RESET:
+            if (ch_flag == AUX_SWITCH_HIGH) {
+                mission.reset();
+            }
+            break;
+#endif
+
         case AUXSW_CAMERA_TRIGGER:
 #if CAMERA == ENABLED
             if (ch_flag == AUX_SWITCH_HIGH) {
@@ -336,6 +344,7 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
             break;
 
         case AUXSW_ACRO_TRAINER:
+#if MODE_ACRO_ENABLED == ENABLED
             switch(ch_flag) {
                 case AUX_SWITCH_LOW:
                     g.acro_trainer = ACRO_TRAINER_DISABLED;
@@ -350,6 +359,7 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                     Log_Write_Event(DATA_ACRO_TRAINER_LIMITED);
                     break;
             }
+#endif
             break;
 
         case AUXSW_GRIPPER:
@@ -451,12 +461,6 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
 #endif
             break;
 
-        case AUXSW_MISSION_RESET:
-            if (ch_flag == AUX_SWITCH_HIGH) {
-                mission.reset();
-            }
-            break;
-
         case AUXSW_ATTCON_FEEDFWD:
             // enable or disable feed forward
             attitude_control->bf_feedforward(ch_flag == AUX_SWITCH_HIGH);
@@ -542,6 +546,7 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
             break;
 
         case AUXSW_THROW:
+#if MODE_THROW_ENABLED == ENABLED
             // throw flight mode
             if (ch_flag == AUX_SWITCH_HIGH) {
                 set_mode(THROW, MODE_REASON_TX_COMMAND);
@@ -551,9 +556,11 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                     reset_control_switch();
                 }
             }
+#endif
             break;
 
         case AUXSW_AVOID_ADSB:
+#if ADSB_ENABLED == ENABLED
             // enable or disable AP_Avoidance
             if (ch_flag == AUX_SWITCH_HIGH) {
                 avoidance_adsb.enable();
@@ -562,10 +569,11 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                 avoidance_adsb.disable();
                 Log_Write_Event(DATA_AVOIDANCE_ADSB_DISABLE);
             }
+#endif
             break;
 
         case AUXSW_PRECISION_LOITER:
-#if PRECISION_LANDING == ENABLED
+#if PRECISION_LANDING == ENABLED && MODE_LOITER_ENABLED == ENABLED
             switch (ch_flag) {
                 case AUX_SWITCH_HIGH:
                     mode_loiter.set_precision_loiter_enabled(true);
@@ -633,6 +641,7 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
             break;
 
         case AUXSW_WINCH_ENABLE:
+#if WINCH_ENABLED == ENABLED
             switch (ch_flag) {
                 case AUX_SWITCH_HIGH:
                     // high switch maintains current position
@@ -645,9 +654,11 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                     Log_Write_Event(DATA_WINCH_RELAXED);
                     break;
                 }
+#endif
             break;
 
         case AUXSW_WINCH_CONTROL:
+#if WINCH_ENABLED == ENABLED
             switch (ch_flag) {
                 case AUX_SWITCH_LOW:
                     // raise winch at maximum speed
@@ -662,6 +673,7 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                     g2.winch.set_desired_rate(0.0f);
                     break;
                 }
+#endif
             break;
 
         case AUXSW_RC_OVERRIDE_ENABLE:

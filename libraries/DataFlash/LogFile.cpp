@@ -14,7 +14,10 @@
 
 #include "DataFlash.h"
 #include "DataFlash_File.h"
+#include "DataFlash_File_sd.h"
 #include "DataFlash_MAVLink.h"
+#include "DataFlash_Revo.h"
+#include "DataFlash_File_sd.h"
 #include "DFMessageWriter.h"
 
 extern const AP_HAL::HAL& hal;
@@ -422,8 +425,9 @@ void DataFlash_Class::Log_Write_RSSI(AP_RSSI &rssi)
     WriteBlock(&pkt, sizeof(pkt));
 }
 
-void DataFlash_Class::Log_Write_Baro_instance(AP_Baro &baro, uint64_t time_us, uint8_t baro_instance, enum LogMessages type)
+void DataFlash_Class::Log_Write_Baro_instance(uint64_t time_us, uint8_t baro_instance, enum LogMessages type)
 {
+    AP_Baro &baro = AP::baro();
     float climbrate = baro.get_climb_rate();
     float drift_offset = baro.get_baro_drift_offset();
     float ground_temp = baro.get_ground_temperature();
@@ -442,17 +446,18 @@ void DataFlash_Class::Log_Write_Baro_instance(AP_Baro &baro, uint64_t time_us, u
 }
 
 // Write a BARO packet
-void DataFlash_Class::Log_Write_Baro(AP_Baro &baro, uint64_t time_us)
+void DataFlash_Class::Log_Write_Baro(uint64_t time_us)
 {
     if (time_us == 0) {
         time_us = AP_HAL::micros64();
     }
-    Log_Write_Baro_instance(baro, time_us, 0, LOG_BARO_MSG);
+    const AP_Baro &baro = AP::baro();
+    Log_Write_Baro_instance(time_us, 0, LOG_BARO_MSG);
     if (baro.num_instances() > 1 && baro.healthy(1)) {
-        Log_Write_Baro_instance(baro, time_us, 1, LOG_BAR2_MSG);
+        Log_Write_Baro_instance(time_us, 1, LOG_BAR2_MSG);
     }
     if (baro.num_instances() > 2 && baro.healthy(2)) {
-        Log_Write_Baro_instance(baro, time_us, 2, LOG_BAR3_MSG);
+        Log_Write_Baro_instance(time_us, 2, LOG_BAR3_MSG);
     }
 }
 
@@ -1547,12 +1552,12 @@ void DataFlash_Class::Log_Write_AttitudeView(AP_AHRS_View &ahrs, const Vector3f 
     WriteBlock(&pkt, sizeof(pkt));
 }
 
-void DataFlash_Class::Log_Write_Current_instance(const AP_BattMonitor &battery,
-                                                 const uint64_t time_us,
+void DataFlash_Class::Log_Write_Current_instance(const uint64_t time_us,
                                                  const uint8_t battery_instance,
                                                  const enum LogMessages type,
                                                  const enum LogMessages celltype)
 {
+    AP_BattMonitor &battery = AP::battery();
     float temp;
     bool has_temp = battery.get_temperature(temp, battery_instance);
     struct log_Current pkt = {
@@ -1561,7 +1566,8 @@ void DataFlash_Class::Log_Write_Current_instance(const AP_BattMonitor &battery,
         voltage             : battery.voltage(battery_instance),
         voltage_resting     : battery.voltage_resting_estimate(battery_instance),
         current_amps        : battery.current_amps(battery_instance),
-        current_total       : battery.current_total_mah(battery_instance),
+        current_total       : battery.consumed_mah(battery_instance),
+        consumed_wh         : battery.consumed_wh(battery_instance),
         temperature         : (int16_t)(has_temp ? (temp * 100) : 0),
         resistance          : battery.get_resistance(battery_instance)
     };
@@ -1587,20 +1593,19 @@ void DataFlash_Class::Log_Write_Current_instance(const AP_BattMonitor &battery,
 }
 
 // Write an Current data packet
-void DataFlash_Class::Log_Write_Current(const AP_BattMonitor &battery)
+void DataFlash_Class::Log_Write_Current()
 {
     const uint64_t time_us = AP_HAL::micros64();
-    if (battery.num_instances() >= 1) {
-        Log_Write_Current_instance(battery,
-                                   time_us,
+    const uint8_t num_instances = AP::battery().num_instances();
+    if (num_instances >= 1) {
+        Log_Write_Current_instance(time_us,
                                    0,
                                    LOG_CURRENT_MSG,
                                    LOG_CURRENT_CELLS_MSG);
     }
 
-    if (battery.num_instances() >= 2) {
-        Log_Write_Current_instance(battery,
-                                   time_us,
+    if (num_instances >= 2) {
+        Log_Write_Current_instance(time_us,
                                    1,
                                    LOG_CURRENT2_MSG,
                                    LOG_CURRENT_CELLS2_MSG);

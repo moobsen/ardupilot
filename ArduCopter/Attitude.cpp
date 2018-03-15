@@ -7,37 +7,6 @@ float Copter::get_smoothing_gain()
     return (2.0f + (float)g.rc_feel_rp/10.0f);
 }
 
-// get_pilot_desired_angle - transform pilot's roll or pitch input into a desired lean angle
-// returns desired angle in centi-degrees
-void Copter::get_pilot_desired_lean_angles(float roll_in, float pitch_in, float &roll_out, float &pitch_out, float angle_max)
-{
-    // sanity check angle max parameter
-    aparm.angle_max = constrain_int16(aparm.angle_max,1000,8000);
-
-    // limit max lean angle
-    angle_max = constrain_float(angle_max, 1000, aparm.angle_max);
-
-    // scale roll_in, pitch_in to ANGLE_MAX parameter range
-    float scaler = aparm.angle_max/(float)ROLL_PITCH_YAW_INPUT_MAX;
-    roll_in *= scaler;
-    pitch_in *= scaler;
-
-    // do circular limit
-    float total_in = norm(pitch_in, roll_in);
-    if (total_in > angle_max) {
-        float ratio = angle_max / total_in;
-        roll_in *= ratio;
-        pitch_in *= ratio;
-    }
-
-    // do lateral tilt to euler roll conversion
-    roll_in = (18000/M_PI) * atanf(cosf(pitch_in*(M_PI/18000))*tanf(roll_in*(M_PI/18000)));
-
-    // return
-    roll_out = roll_in;
-    pitch_out = pitch_in;
-}
-
 // get_pilot_desired_heading - transform pilot's yaw input into a
 // desired yaw rate
 // returns desired yaw rate in centi-degrees per second
@@ -149,7 +118,7 @@ float Copter::get_pilot_desired_throttle(int16_t throttle_control, float thr_mid
         thr_mid = motors->get_throttle_hover();
     }
 
-    int16_t mid_stick = channel_throttle->get_control_mid();
+    int16_t mid_stick = get_throttle_mid();
     // protect against unlikely divide by zero
     if (mid_stick <= 0) {
         mid_stick = 500;
@@ -186,8 +155,16 @@ float Copter::get_pilot_desired_climb_rate(float throttle_control)
         return 0.0f;
     }
 
+#if TOY_MODE_ENABLED == ENABLED
+    if (g2.toy_mode.enabled()) {
+        // allow throttle to be reduced after throttle arming and for
+        // slower descent close to the ground
+        g2.toy_mode.throttle_adjust(throttle_control);
+    }
+#endif
+    
     float desired_rate = 0.0f;
-    float mid_stick = channel_throttle->get_control_mid();
+    float mid_stick = get_throttle_mid();
     float deadband_top = mid_stick + g.throttle_deadzone;
     float deadband_bottom = mid_stick - g.throttle_deadzone;
 
