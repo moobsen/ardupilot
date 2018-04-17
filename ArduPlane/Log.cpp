@@ -158,7 +158,7 @@ void Plane::Log_Write_Status()
         ,armed       : hal.util->get_soft_armed()
         ,safety      : static_cast<uint8_t>(hal.util->safety_switch_state())
         ,is_crashed  : crash_state.is_crashed
-        ,is_still    : plane.ins.is_still()
+        ,is_still    : AP::ins().is_still()
         ,stage       : static_cast<uint8_t>(flight_stage)
         ,impact      : crash_state.impact_detected
         };
@@ -279,9 +279,9 @@ void Plane::Log_Write_GPS(uint8_t instance)
     }
 }
 
-void Plane::Log_Write_IMU() 
+void Plane::Log_Write_IMU()
 {
-    DataFlash.Log_Write_IMU(ins);
+    DataFlash.Log_Write_IMU();
 }
 
 void Plane::Log_Write_RC(void)
@@ -292,13 +292,6 @@ void Plane::Log_Write_RC(void)
         DataFlash.Log_Write_RSSI(rssi);
     }
     Log_Write_AETR();
-}
-
-void Plane::Log_Write_Baro(void)
-{
-    if (!ahrs.have_ekf_logging()) {
-        DataFlash.Log_Write_Baro();
-    }
 }
 
 // Write a AIRSPEED packet
@@ -325,7 +318,7 @@ void Plane::Log_Write_Home_And_Origin()
 #endif
 
     // log ahrs home if set
-    if (home_is_set != HOME_UNSET) {
+    if (ahrs.home_is_set()) {
         DataFlash.Log_Write_Origin(LogOriginType::ahrs_home, ahrs.get_home());
     }
 }
@@ -406,7 +399,6 @@ void Plane::Log_Arm_Disarm() {}
 void Plane::Log_Write_GPS(uint8_t instance) {}
 void Plane::Log_Write_IMU() {}
 void Plane::Log_Write_RC(void) {}
-void Plane::Log_Write_Baro(void) {}
 void Plane::Log_Write_Airspeed(void) {}
 void Plane::Log_Write_Home_And_Origin() {}
 

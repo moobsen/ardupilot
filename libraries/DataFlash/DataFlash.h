@@ -50,7 +50,6 @@ class DataFlash_Class
     friend class DataFlash_Backend; // for _num_types
 
 public:
-    FUNCTOR_TYPEDEF(print_mode_fn, void, AP_HAL::BetterStream*, uint8_t);
     FUNCTOR_TYPEDEF(vehicle_startup_message_Log_Writer, void);
 
     DataFlash_Class(const char *firmware_string, const AP_Int32 &log_bitmask);
@@ -83,13 +82,6 @@ public:
     uint16_t find_last_log() const;
     void get_log_boundaries(uint16_t log_num, uint16_t & start_page, uint16_t & end_page);
     uint16_t get_num_logs(void);
-    void LogReadProcess(uint16_t log_num,
-                                uint16_t start_page, uint16_t end_page, 
-                                print_mode_fn printMode,
-                                AP_HAL::BetterStream *port);
-    void DumpPageInfo(AP_HAL::BetterStream *port);
-    void ShowDeviceInfo(AP_HAL::BetterStream *port);
-    void ListAvailableLogs(AP_HAL::BetterStream *port);
 
     void setVehicle_Startup_Log_Writer(vehicle_startup_message_Log_Writer writer);
 
@@ -103,8 +95,8 @@ public:
     void Log_Write_Parameter(const char *name, float value);
     void Log_Write_GPS(const AP_GPS &gps, uint8_t instance, uint64_t time_us=0);
     void Log_Write_RFND(const RangeFinder &rangefinder);
-    void Log_Write_IMU(const AP_InertialSensor &ins);
-    void Log_Write_IMUDT(const AP_InertialSensor &ins, uint64_t time_us, uint8_t imu_mask);
+    void Log_Write_IMU();
+    void Log_Write_IMUDT(uint64_t time_us, uint8_t imu_mask);
     bool Log_Write_ISBH(uint16_t seqno,
                         AP_InertialSensor::IMU_SENSOR_TYPE sensor_type,
                         uint8_t instance,
@@ -117,7 +109,7 @@ public:
                         const int16_t x[32],
                         const int16_t y[32],
                         const int16_t z[32]);
-    void Log_Write_Vibration(const AP_InertialSensor &ins);
+    void Log_Write_Vibration();
     void Log_Write_RCIN(void);
     void Log_Write_RCOUT(void);
     void Log_Write_RSSI(AP_RSSI &rssi);
@@ -222,7 +214,7 @@ public:
     void set_vehicle_armed(bool armed_state);
     bool vehicle_is_armed() const { return _armed; }
 
-    void handle_log_send(class GCS_MAVLINK &);
+    void handle_log_send();
     bool in_log_download() const { return _in_log_download; }
 
     float quiet_nanf() const { return nanf("0x4152"); } // "AR"
@@ -296,8 +288,7 @@ private:
 #endif
 
     void Log_Write_Baro_instance(uint64_t time_us, uint8_t baro_instance, enum LogMessages type);
-    void Log_Write_IMU_instance(const AP_InertialSensor &ins,
-                                uint64_t time_us,
+    void Log_Write_IMU_instance(uint64_t time_us,
                                 uint8_t imu_instance,
                                 enum LogMessages type);
     void Log_Write_Compass_instance(const Compass &compass,
@@ -308,8 +299,7 @@ private:
                                     uint8_t battery_instance,
                                     enum LogMessages type,
                                     enum LogMessages celltype);
-    void Log_Write_IMUDT_instance(const AP_InertialSensor &ins,
-                                  uint64_t time_us,
+    void Log_Write_IMUDT_instance(uint64_t time_us,
                                   uint8_t imu_instance,
                                   enum LogMessages type);
 
@@ -372,7 +362,7 @@ private:
     // start page of log data
     uint16_t _log_data_page;
 
-    int8_t _log_sending_chan = -1;
+    GCS_MAVLINK *_log_sending_link;
 
     bool should_handle_log_message();
     void handle_log_message(class GCS_MAVLINK &, mavlink_message_t *msg);
@@ -381,8 +371,8 @@ private:
     void handle_log_request_data(class GCS_MAVLINK &, mavlink_message_t *msg);
     void handle_log_request_erase(class GCS_MAVLINK &, mavlink_message_t *msg);
     void handle_log_request_end(class GCS_MAVLINK &, mavlink_message_t *msg);
-    void handle_log_send_listing(class GCS_MAVLINK &);
-    bool handle_log_send_data(class GCS_MAVLINK &);
+    void handle_log_send_listing();
+    bool handle_log_send_data();
 
     void get_log_info(uint16_t log_num, uint32_t &size, uint32_t &time_utc);
 

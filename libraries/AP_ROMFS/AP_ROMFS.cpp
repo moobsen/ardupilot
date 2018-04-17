@@ -11,28 +11,29 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+/*
+  implement a file store for embedded firmware images
  */
 
-#include "AP_HAL.h"
+#include "AP_ROMFS.h"
 
-#include "utility/print_vprintf.h"
-#include "UARTDriver.h"
+#ifdef HAL_HAVE_AP_ROMFS_EMBEDDED_H
+#include <ap_romfs_embedded.h>
+#else
+const AP_ROMFS::embedded_file AP_ROMFS::files[] = {};
+#endif
 
 /*
-   BetterStream method implementations
-   These are implemented in AP_HAL to ensure consistent behaviour on
-   all boards, although they can be overridden by a port
- */
-
-void AP_HAL::UARTDriver::printf(const char *fmt, ...) 
+  find an embedded file
+*/
+const uint8_t *AP_ROMFS::find_file(const char *name, uint32_t &size)
 {
-    va_list ap;
-    va_start(ap, fmt);
-    vprintf(fmt, ap);
-    va_end(ap);
-}
-
-void AP_HAL::UARTDriver::vprintf(const char *fmt, va_list ap) 
-{
-    print_vprintf(this, fmt, ap);
+    for (uint16_t i=0; i<ARRAY_SIZE_SIMPLE(files); i++) {
+        if (strcmp(name, files[i].filename) == 0) {
+            size = files[i].size;
+            return files[i].contents;
+        }
+    }
+    return nullptr;
 }

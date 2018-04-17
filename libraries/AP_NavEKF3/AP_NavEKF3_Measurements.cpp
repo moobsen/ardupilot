@@ -329,7 +329,7 @@ void NavEKF3_core::readMagData()
  */
 void NavEKF3_core::readIMUData()
 {
-    const AP_InertialSensor &ins = _ahrs->get_ins();
+    const AP_InertialSensor &ins = AP::ins();
 
     // calculate an averaged IMU update rate using a spike and lowpass filter combination
     dtIMUavg = 0.02f * constrain_float(ins.get_loop_delta_t(),0.5f * dtIMUavg, 2.0f * dtIMUavg) + 0.98f * dtIMUavg;
@@ -437,7 +437,7 @@ void NavEKF3_core::readIMUData()
 // read the delta velocity and corresponding time interval from the IMU
 // return false if data is not available
 bool NavEKF3_core::readDeltaVelocity(uint8_t ins_index, Vector3f &dVel, float &dVel_dt) {
-    const AP_InertialSensor &ins = _ahrs->get_ins();
+    const AP_InertialSensor &ins = AP::ins();
 
     if (ins_index < ins.get_accel_count()) {
         ins.get_delta_velocity(ins_index,dVel);
@@ -583,7 +583,7 @@ void NavEKF3_core::readGpsData()
 // read the delta angle and corresponding time interval from the IMU
 // return false if data is not available
 bool NavEKF3_core::readDeltaAngle(uint8_t ins_index, Vector3f &dAng) {
-    const AP_InertialSensor &ins = _ahrs->get_ins();
+    const AP_InertialSensor &ins = AP::ins();
 
     if (ins_index < ins.get_gyro_count()) {
         ins.get_delta_angle(ins_index,dAng);
@@ -780,9 +780,9 @@ void NavEKF3_core::readRngBcnData()
     // Check if the range beacon data can be used to align the vehicle position
     if (imuSampleTime_ms - rngBcnLast3DmeasTime_ms < 250 && beaconVehiclePosErr < 1.0f && rngBcnAlignmentCompleted) {
         // check for consistency between the position reported by the beacon and the position from the 3-State alignment filter
-        float posDiffSq = sq(receiverPos.x - beaconVehiclePosNED.x) + sq(receiverPos.y - beaconVehiclePosNED.y);
-        float posDiffVar = sq(beaconVehiclePosErr) + receiverPosCov[0][0] + receiverPosCov[1][1];
-        if (posDiffSq < 9.0f*posDiffVar) {
+        const float posDiffSq = sq(receiverPos.x - beaconVehiclePosNED.x) + sq(receiverPos.y - beaconVehiclePosNED.y);
+        const float posDiffVar = sq(beaconVehiclePosErr) + receiverPosCov[0][0] + receiverPosCov[1][1];
+        if (posDiffSq < 9.0f * posDiffVar) {
             rngBcnGoodToAlign = true;
             // Set the EKF origin and magnetic field declination if not previously set
             if (!validOrigin && PV_AidingMode != AID_ABSOLUTE) {
@@ -812,7 +812,7 @@ void NavEKF3_core::readRngBcnData()
     }
 
     // Check the buffer for measurements that have been overtaken by the fusion time horizon and need to be fused
-    rngBcnDataToFuse = storedRangeBeacon.recall(rngBcnDataDelayed,imuDataDelayed.time_ms);
+    rngBcnDataToFuse = storedRangeBeacon.recall(rngBcnDataDelayed, imuDataDelayed.time_ms);
 
     // Correct the range beacon earth frame origin for estimated offset relative to the EKF earth frame origin
     if (rngBcnDataToFuse) {

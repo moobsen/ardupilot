@@ -35,7 +35,7 @@ class OpticalFlow;
 #define AP_AHRS_RP_P_MIN   0.05f        // minimum value for AHRS_RP_P parameter
 #define AP_AHRS_YAW_P_MIN  0.05f        // minimum value for AHRS_YAW_P parameter
 
-enum AHRS_VehicleClass {
+enum AHRS_VehicleClass : uint8_t {
     AHRS_VEHICLE_UNKNOWN,
     AHRS_VEHICLE_GROUND,
     AHRS_VEHICLE_COPTER,
@@ -53,27 +53,11 @@ public:
     friend class AP_AHRS_View;
     
     // Constructor
-    AP_AHRS(AP_InertialSensor &ins) :
-        roll(0.0f),
-        pitch(0.0f),
-        yaw(0.0f),
-        roll_sensor(0),
-        pitch_sensor(0),
-        yaw_sensor(0),
+    AP_AHRS() :
         _vehicle_class(AHRS_VEHICLE_UNKNOWN),
-        _compass(nullptr),
-        _optflow(nullptr),
-        _airspeed(nullptr),
-        _beacon(nullptr),
-        _compass_last_update(0),
-        _ins(ins),
         _cos_roll(1.0f),
         _cos_pitch(1.0f),
-        _cos_yaw(1.0f),
-        _sin_roll(0.0f),
-        _sin_pitch(0.0f),
-        _sin_yaw(0.0f),
-        _active_accel_instance(0)
+        _cos_yaw(1.0f)
     {
         _singleton = this;
 
@@ -82,16 +66,10 @@ public:
 
         // base the ki values by the sensors maximum drift
         // rate.
-        _gyro_drift_limit = ins.get_gyro_drift_rate();
+        _gyro_drift_limit = AP::ins().get_gyro_drift_rate();
 
         // enable centrifugal correction by default
         _flags.correct_centrifugal = true;
-
-        // initialise _home
-        _home.options    = 0;
-        _home.alt        = 0;
-        _home.lng        = 0;
-        _home.lat        = 0;
 
         _last_trim = _trim.get();
         _rotation_autopilot_body_to_vehicle_body.from_euler(_last_trim.x, _last_trim.y, 0.0f);
@@ -184,7 +162,7 @@ public:
     // allow for runtime change of orientation
     // this makes initial config easier
     void set_orientation() {
-        _ins.set_board_orientation((enum Rotation)_board_orientation.get());
+        AP::ins().set_board_orientation((enum Rotation)_board_orientation.get());
         if (_compass != nullptr) {
             _compass->set_board_orientation((enum Rotation)_board_orientation.get());
         }
@@ -206,18 +184,14 @@ public:
         return _beacon;
     }
 
-    const AP_InertialSensor &get_ins() const {
-        return _ins;
-    }
-
     // get the index of the current primary accelerometer sensor
     virtual uint8_t get_primary_accel_index(void) const {
-        return _ins.get_primary_accel();
+        return AP::ins().get_primary_accel();
     }
 
     // get the index of the current primary gyro sensor
     virtual uint8_t get_primary_gyro_index(void) const {
-        return _ins.get_primary_gyro();
+        return AP::ins().get_primary_gyro();
     }
     
     // accelerometer values in the earth frame in m/s/s
@@ -225,7 +199,7 @@ public:
         return _accel_ef[i];
     }
     virtual const Vector3f &get_accel_ef(void) const {
-        return get_accel_ef(_ins.get_primary_accel());
+        return get_accel_ef(AP::ins().get_primary_accel());
     }
 
     // blended accelerometer values in the earth frame in m/s/s
@@ -467,6 +441,16 @@ public:
         return _home;
     }
 
+    enum HomeState home_status(void) const {
+        return _home_status;
+    }
+    void set_home_status(enum HomeState new_status) {
+        _home_status = new_status;
+    }
+    bool home_is_set(void) const {
+        return _home_status != HOME_UNSET;
+    }
+
     // set the home location in 10e7 degrees. This should be called
     // when the vehicle is at this position. It is assumed that the
     // current barometer and GPS altitudes correspond to this altitude
@@ -549,7 +533,12 @@ public:
     }
 
     // Retrieves the corrected NED delta velocity in use by the inertial navigation
-    virtual void getCorrectedDeltaVelocityNED(Vector3f& ret, float& dt) const { ret.zero(); _ins.get_delta_velocity(ret); dt = _ins.get_delta_velocity_dt(); }
+    virtual void getCorrectedDeltaVelocityNED(Vector3f& ret, float& dt) const {
+        ret.zero();
+        const AP_InertialSensor &_ins = AP::ins();
+        _ins.get_delta_velocity(ret);
+        dt = _ins.get_delta_velocity_dt();
+    }
 
     // create a view
     AP_AHRS_View *create_view(enum Rotation rotation);
@@ -574,6 +563,9 @@ public:
     // control loops in meters and a validity flag.  It will return
     // false when no limiting is required
     virtual bool get_hgt_ctrl_limit(float &limit) const { return false; };
+
+    // Write position and quaternion data from an external navigation system
+    virtual void writeExtNavData(const Vector3f &sensOffset, const Vector3f &pos, const Quaternion &quat, float posErr, float angErr, uint32_t timeStamp_ms, uint32_t resetTime_ms) { }
 
 protected:
     AHRS_VehicleClass _vehicle_class;
@@ -631,10 +623,6 @@ protected:
     // time in microseconds of last compass update
     uint32_t _compass_last_update;
 
-    // note: we use ref-to-pointer here so that our caller can change the GPS without our noticing
-    //       IMU under us without our noticing.
-    AP_InertialSensor   &_ins;
-
     // a vector to capture the difference between the controller and body frames
     AP_Vector3f         _trim;
 
@@ -676,6 +664,9 @@ protected:
 
 private:
     static AP_AHRS *_singleton;
+
+    // Flag for if we have g_gps lock and have set the home location in AHRS
+    enum HomeState _home_status = HOME_UNSET;
 
 };
 

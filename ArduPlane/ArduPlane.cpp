@@ -52,7 +52,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(gcs_update,             50,    500),
     SCHED_TASK(gcs_data_stream_send,   50,    500),
     SCHED_TASK(update_events,          50,    150),
-    SCHED_TASK(read_battery,           10,    300),
+    SCHED_TASK_CLASS(AP_BattMonitor, &plane.battery, read, 10, 300),
     SCHED_TASK(compass_accumulate,     50,    200),
     SCHED_TASK(barometer_accumulate,   50,    150),
     SCHED_TASK(update_notify,          50,    300),
@@ -90,6 +90,8 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK_CLASS(AP_Gripper, &plane.g2.gripper, update, 10, 75),
 #endif
 };
+
+constexpr int8_t Plane::_failsafe_priorities[5];
 
 #if STATS_ENABLED == ENABLED
 /*
@@ -262,7 +264,7 @@ void Plane::update_logging2(void)
         Log_Write_RC();
 
     if (should_log(MASK_LOG_IMU))
-        DataFlash.Log_Write_Vibration(ins);
+        DataFlash.Log_Write_Vibration();
 }
 
 
@@ -647,7 +649,7 @@ void Plane::update_flight_mode(void)
         }
         if (g.fbwa_tdrag_chan > 0) {
             // check for the user enabling FBWA taildrag takeoff mode
-            bool tdrag_mode = (hal.rcin->read(g.fbwa_tdrag_chan-1) > 1700);
+            bool tdrag_mode = (RC_Channels::get_radio_in(g.fbwa_tdrag_chan-1) > 1700);
             if (tdrag_mode && !auto_state.fbwa_tdrag_takeoff_mode) {
                 if (auto_state.highest_airspeed < g.takeoff_tdrag_speed1) {
                     auto_state.fbwa_tdrag_takeoff_mode = true;
@@ -756,7 +758,7 @@ void Plane::update_navigation()
     
     switch(control_mode) {
     case AUTO:
-        if (home_is_set != HOME_UNSET) {
+        if (ahrs.home_is_set()) {
             mission.update();
         }
         break;
@@ -859,9 +861,6 @@ void Plane::set_flight_stage(AP_Vehicle::FixedWing::FlightStage fs)
 void Plane::update_alt()
 {
     barometer.update();
-    if (should_log(MASK_LOG_IMU)) {
-        Log_Write_Baro();
-    }
 
     // calculate the sink rate.
     float sink_rate;

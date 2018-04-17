@@ -184,13 +184,6 @@ enum tuning_func {
 #define ACRO_TRAINER_LEVELING   1
 #define ACRO_TRAINER_LIMITED    2
 
-// RC Feel roll/pitch definitions
-#define RC_FEEL_RP_VERY_SOFT        0
-#define RC_FEEL_RP_SOFT             25
-#define RC_FEEL_RP_MEDIUM           50
-#define RC_FEEL_RP_CRISP            75
-#define RC_FEEL_RP_VERY_CRISP       100
-
 // Yaw behaviours during missions - possible values for WP_YAW_BEHAVIOR parameter
 #define WP_YAW_BEHAVIOR_NONE                          0   // auto pilot will never control yaw during missions or rtl (except for DO_CONDITIONAL_YAW command received)
 #define WP_YAW_BEHAVIOR_LOOK_AT_NEXT_WP               1   // auto pilot will face next waypoint or home during rtl
@@ -272,21 +265,6 @@ enum FlipState {
     Flip_Abandon
 };
 
-// Throw stages
-enum ThrowModeStage {
-    Throw_Disarmed,
-    Throw_Detecting,
-    Throw_Uprighting,
-    Throw_HgtStabilise,
-    Throw_PosHold
-};
-
-// Throw types
-enum ThrowModeType {
-    ThrowType_Upward = 0,
-    ThrowType_Drop = 1
-};
-
 enum LandStateType {
     LandStateType_FlyToLocation = 0,
     LandStateType_Descending = 1
@@ -316,7 +294,6 @@ enum LoggingParameters {
      TYPE_AIRSTART_MSG,
      TYPE_GROUNDSTART_MSG,
      LOG_CONTROL_TUNING_MSG,
-     LOG_NAV_TUNING_MSG,
      LOG_OPTFLOW_MSG,
      LOG_EVENT_MSG,
      LOG_ERROR_MSG,
@@ -332,7 +309,6 @@ enum LoggingParameters {
      LOG_HELI_MSG,
      LOG_PRECLAND_MSG,
      LOG_GUIDEDTARGET_MSG,
-     LOG_THROW_MSG,
 };
 
 #define MASK_LOG_ATTITUDE_FAST          (1<<0)
@@ -482,13 +458,6 @@ enum LoggingParameters {
 #define FS_THR_ENABLED_ALWAYS_LAND                 3
 #define FS_THR_ENABLED_ALWAYS_SMARTRTL_OR_RTL      4
 #define FS_THR_ENABLED_ALWAYS_SMARTRTL_OR_LAND     5
-
-// Battery failsafe definitions (FS_BATT_ENABLE parameter)
-#define FS_BATT_DISABLED                    0       // battery failsafe disabled
-#define FS_BATT_LAND                        1       // switch to LAND mode on battery failsafe
-#define FS_BATT_RTL                         2       // switch to RTL mode on battery failsafe
-#define FS_BATT_SMARTRTL_OR_RTL             3       // switch to SmartRTL, if can't, switch to RTL
-#define FS_BATT_SMARTRTL_OR_LAND            4       // switch to SmartRTL, if can't, swtich to LAND
 
 // GCS failsafe definitions (FS_GCS_ENABLE parameter)
 #define FS_GCS_DISABLED                        0

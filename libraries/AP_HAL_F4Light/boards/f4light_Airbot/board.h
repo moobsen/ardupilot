@@ -97,30 +97,29 @@
 
 // use soft I2C driver instead hardware
 //#define BOARD_SOFT_I2C2
-#define BOARD_I2C_BUS_INT   1  // hardware internal I2C
-//#define BOARD_I2C_BUS_EXT 1  // external I2C
+//#define BOARD_I2C_BUS_INT   1  // hardware internal I2C
+#define BOARD_I2C_BUS_EXT   1  // external I2C
 #define BOARD_I2C_BUS_SLOW  1 // slow down bus with this number
 
-#define HAL_BARO_MS5611_I2C_BUS         BOARD_I2C_BUS_INT
+#define HAL_BARO_MS5611_I2C_BUS         BOARD_I2C_BUS_EXT
 #define HAL_BARO_MS5611_I2C_ADDR        (0x77)
 
-#define HAL_BARO_BMP280_BUS             BOARD_I2C_BUS_INT
+#define HAL_BARO_BMP280_BUS             BOARD_I2C_BUS_EXT
 #define HAL_BARO_BMP280_I2C_ADDR        (0x76)
 
-#define HAL_BARO_BMP085_BUS             BOARD_I2C_BUS_INT
+#define HAL_BARO_BMP085_BUS             BOARD_I2C_BUS_EXT
 #define HAL_BARO_BMP085_I2C_ADDR        (0x77)
 
-#define HAL_BARO_MS5607_I2C_BUS         BOARD_I2C_BUS_INT
+#define HAL_BARO_MS5607_I2C_BUS         BOARD_I2C_BUS_EXT
 #define HAL_BARO_MS5607_I2C_ADDR        (0x77)
 
 
 #define BOARD_COMPASS_DEFAULT HAL_COMPASS_HMC5843
 //#define BOARD_HMC5883_DRDY_PIN  38  // PB7 - but it not used by driver
 
-#define HAL_COMPASS_HMC5843_I2C_BUS     BOARD_I2C_BUS_INT
+#define HAL_COMPASS_HMC5843_I2C_BUS     BOARD_I2C_BUS_EXT
 #define HAL_COMPASS_HMC5843_I2C_ADDR    (0x1E)
 #define HAL_COMPASS_HMC5843_ROTATION    ROTATION_NONE
-
 
 #define BOARD_INS_DEFAULT HAL_INS_MPU60XX_SPI
 #define BOARD_INS_ROTATION  ROTATION_YAW_180
@@ -133,16 +132,13 @@
 #define BOARD_DATAFLASH_PAGES 0x10000
 #define BOARD_DATAFLASH_ERASE_SIZE (4096)// in bytes
 
-#if 1// if board's dataflash supports 4k erases then we can use it as FAT and share it via USB
+// if board's dataflash supports 4k erases then we can use it as FAT and share it via USB
 #define BOARD_DATAFLASH_FATFS
 #define BOARD_HAS_SDIO
 #define USB_MASSSTORAGE
 #define HAL_BOARD_LOG_DIRECTORY "0:"
 #define HAL_BOARD_TERRAIN_DIRECTORY "0:/TERRAIN"
 //#define HAL_PARAM_DEFAULTS_PATH "0:/defaults.parm"
-#else
-// old dataflash logs
-#endif
 
 #define BOARD_UARTS_LAYOUT 2
 
@@ -184,14 +180,13 @@
 #ifdef USB_MASSSTORAGE
 
 #define BOARD_HAL_VARINFO \
-    AP_GROUPINFO("DBG_WAYBACK",  30, AP_Param_Helper, _dbg_wayback, 0), \
-    AP_GROUPINFO("USB_STORAGE",  31, AP_Param_Helper, _usb_storage, 0), \
+    AP_GROUPINFO("USB_STORAGE",  30, AP_Param_Helper, _usb_storage, 0), \
+    AP_GROUPINFO("DBG_WAYBACK",  31, AP_Param_Helper, _dbg_wayback, 0), 
 
 #else
 
 #define BOARD_HAL_VARINFO \
-    AP_GROUPINFO("DBG_WAYBACK",  30, AP_Param_Helper, _dbg_wayback, 0), \
-
+    AP_GROUPINFO("DBG_WAYBACK",  30, AP_Param_Helper, _dbg_wayback, 0), 
 #endif
 
 

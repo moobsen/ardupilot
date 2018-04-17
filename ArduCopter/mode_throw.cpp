@@ -79,7 +79,7 @@ void Copter::ModeThrow::run()
         stage = Throw_PosHold;
 
         // initialise the loiter target to the curent position and velocity
-        wp_nav->init_loiter_target();
+        loiter_nav->init_target();
 
         // Set the auto_arm status to true to avoid a possible automatic disarm caused by selection of an auto mode with throttle at minimum
         copter.set_auto_armed(true);
@@ -141,7 +141,7 @@ void Copter::ModeThrow::run()
         motors->set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
 
         // demand a level roll/pitch attitude with zero yaw rate
-        attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f, get_smoothing_gain());
+        attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f);
 
         // output 50% throttle and turn off angle boost to maximise righting moment
         attitude_control->set_throttle_out(0.5f, false, g.throttle_filt);
@@ -154,7 +154,7 @@ void Copter::ModeThrow::run()
         motors->set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
 
         // call attitude controller
-        attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f, get_smoothing_gain());
+        attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f);
 
         // call height controller
         pos_control->set_alt_target_from_climb_rate_ff(0.0f, G_Dt, false);
@@ -168,10 +168,10 @@ void Copter::ModeThrow::run()
         motors->set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
 
         // run loiter controller
-        wp_nav->update_loiter(ekfGndSpdLimit, ekfNavVelGainScaler);
+        loiter_nav->update(ekfGndSpdLimit, ekfNavVelGainScaler);
 
         // call attitude controller
-        attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav->get_roll(), wp_nav->get_pitch(), 0.0f, get_smoothing_gain());
+        attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(loiter_nav->get_roll(), loiter_nav->get_pitch(), 0.0f);
 
         // call height controller
         pos_control->set_alt_target_from_climb_rate_ff(0.0f, G_Dt, false);
@@ -193,15 +193,22 @@ void Copter::ModeThrow::run()
         bool attitude_ok = (stage > Throw_Uprighting) || throw_attitude_good();
         bool height_ok = (stage > Throw_HgtStabilise) || throw_height_good();
         bool pos_ok = (stage > Throw_PosHold) || throw_position_good();
-        copter.Log_Write_Throw(stage,
-                                velocity,
-                                velocity_z,
-                                accel,
-                                ef_accel_z,
-                                throw_detect,
-                                attitude_ok,
-                                height_ok,
-                                pos_ok);
+        DataFlash_Class::instance()->Log_Write(
+            "THRO",
+            "TimeUS,Stage,Vel,VelZ,Acc,AccEfZ,Throw,AttOk,HgtOk,PosOk",
+            "s-nnoo----",
+            "F-0000----",
+            "QBffffbbbb",
+            AP_HAL::micros64(),
+            (uint8_t)stage,
+            velocity,
+            velocity_z,
+            accel,
+            ef_accel_z,
+            throw_detect,
+            attitude_ok,
+            height_ok,
+            pos_ok);
     }
 }
 
