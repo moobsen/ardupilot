@@ -231,7 +231,6 @@ protected:
     virtual AP_Rally *get_rally() const = 0;
     virtual Compass *get_compass() const = 0;
     virtual class AP_Camera *get_camera() const = 0;
-    virtual AP_ServoRelayEvents *get_servorelayevents() const = 0;
     virtual AP_AdvancedFailsafe *get_advanced_failsafe() const { return nullptr; };
     virtual AP_VisualOdom *get_visual_odom() const { return nullptr; }
     virtual bool set_mode(uint8_t mode) = 0;
@@ -451,13 +450,20 @@ private:
     void handle_vision_position_estimate(mavlink_message_t *msg);
     void handle_global_vision_position_estimate(mavlink_message_t *msg);
     void handle_att_pos_mocap(mavlink_message_t *msg);
-    void _handle_common_vision_position_estimate_data(const uint64_t usec,
-                                                      const float x,
-                                                      const float y,
-                                                      const float z,
-                                                      const float roll,
-                                                      const float pitch,
-                                                      const float yaw);
+    void handle_common_vision_position_estimate_data(const uint64_t usec,
+                                                     const float x,
+                                                     const float y,
+                                                     const float z,
+                                                     const float roll,
+                                                     const float pitch,
+                                                     const float yaw);
+    void log_vision_position_estimate_data(const uint64_t usec,
+                                           const float x,
+                                           const float y,
+                                           const float z,
+                                           const float roll,
+                                           const float pitch,
+                                           const float yaw);
     void push_deferred_messages();
 
     void lock_channel(mavlink_channel_t chan, bool lock);
