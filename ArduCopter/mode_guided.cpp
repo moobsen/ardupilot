@@ -39,8 +39,6 @@ struct Guided_Limit {
 bool Copter::ModeGuided::init(bool ignore_checks)
 {
     if (copter.position_ok() || ignore_checks) {
-        // initialise yaw
-        auto_yaw.set_mode_to_default(false);
         // start in position control mode
         pos_control_start();
         return true;
@@ -50,8 +48,8 @@ bool Copter::ModeGuided::init(bool ignore_checks)
 }
 
 
-// guided_takeoff_start - initialises waypoint controller to implement take-off
-bool Copter::ModeGuided::takeoff_start(float final_alt_above_home)
+// do_user_takeoff_start - initialises waypoint controller to implement take-off
+bool Copter::ModeGuided::do_user_takeoff_start(float final_alt_above_home)
 {
     guided_mode = Guided_TakeOff;
 
@@ -161,7 +159,7 @@ void Copter::ModeGuided::angle_control_start()
 
     // initialise targets
     guided_angle_state.update_time_ms = millis();
-    guided_angle_state.roll_cd = copter.ahrs.roll_sensor;
+    guided_angle_state.roll_cd = ahrs.roll_sensor;
     guided_angle_state.pitch_cd = ahrs.pitch_sensor;
     guided_angle_state.yaw_cd = ahrs.yaw_sensor;
     guided_angle_state.climb_rate_cms = 0.0f;
@@ -201,6 +199,14 @@ bool Copter::ModeGuided::set_destination(const Vector3f& destination, bool use_y
     // log target
     copter.Log_Write_GuidedTarget(guided_mode, destination, Vector3f());
     return true;
+}
+
+bool Copter::ModeGuided::get_wp(Location_Class& destination)
+{
+    if (guided_mode != Guided_WP) {
+        return false;
+    }
+    return wp_nav->get_wp_destination(destination);
 }
 
 // sets guided mode's target from a Location object
@@ -758,6 +764,15 @@ int32_t Copter::ModeGuided::wp_bearing() const
         return pos_control->get_bearing_to_target();
         break;
     default:
+        return 0;
+    }
+}
+
+float Copter::ModeGuided::crosstrack_error() const
+{
+    if (mode() == Guided_WP) {
+        return wp_nav->crosstrack_error();
+    } else {
         return 0;
     }
 }

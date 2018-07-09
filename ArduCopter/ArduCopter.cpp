@@ -150,7 +150,6 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #endif
     SCHED_TASK_CLASS(AP_InertialSensor,    &copter.ins,                 periodic,       400,  50),
     SCHED_TASK_CLASS(AP_Scheduler,         &copter.scheduler,           update_logging, 0.1,  75),
-    SCHED_TASK(read_receiver_rssi,    10,     75),
 #if RPM_ENABLED == ENABLED
     SCHED_TASK(rpm_update,            10,    200),
 #endif
@@ -309,7 +308,7 @@ void Copter::update_batt_compass(void)
         compass.read();
         // log compass information
         if (should_log(MASK_LOG_COMPASS) && !ahrs.have_ekf_logging()) {
-            DataFlash.Log_Write_Compass(compass);
+            DataFlash.Log_Write_Compass();
         }
     }
 }
@@ -403,7 +402,7 @@ void Copter::three_hz_loop()
     fence_check();
 #endif // AC_FENCE_ENABLED
 
-#if SPRAYER == ENABLED
+#if SPRAYER_ENABLED == ENABLED
     sprayer.update();
 #endif
 
@@ -440,8 +439,6 @@ void Copter::one_hz_loop()
     // update assigned functions and enable auxiliary servos
     SRV_Channels::enable_aux_servos();
 
-    check_usb_mux();
-
     // log terrain data
     terrain_logging();
 
@@ -474,9 +471,6 @@ void Copter::update_GPS(void)
     }
 
     if (gps_updated) {
-        // set system time if necessary
-        set_system_time_from_GPS();
-
 #if CAMERA == ENABLED
         camera.update();
 #endif
@@ -567,7 +561,7 @@ void Copter::read_AHRS(void)
     ahrs.update(true);
 }
 
-// read baro and rangefinder altitude at 10hz
+// read baro and log control tuning
 void Copter::update_altitude()
 {
     // read in baro altitude

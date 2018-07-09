@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <AP_HAL/AP_HAL.h>
+#include <AP_Math/AP_Math.h>
 #include <AP_Vehicle/AP_Vehicle_Type.h>
 
 #include "RCInput.h"
@@ -17,13 +18,6 @@
 #include "Storage.h"
 #include "UARTDriver.h"
 #include "Util.h"
-
-#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_QFLIGHT
-#include <rpcmem.h>
-#include <AP_HAL_Linux/qflight/qflight_util.h>
-#include <AP_HAL_Linux/qflight/qflight_dsp.h>
-#include <AP_HAL_Linux/qflight/qflight_buffer.h>
-#endif
 
 #if HAL_WITH_UAVCAN
 #include "CAN.h"
@@ -33,6 +27,7 @@ using namespace Linux;
 
 extern const AP_HAL::HAL& hal;
 
+#define APM_LINUX_MAX_PRIORITY          20
 #define APM_LINUX_TIMER_PRIORITY        15
 #define APM_LINUX_UART_PRIORITY         14
 #define APM_LINUX_RCIN_PRIORITY         13
@@ -153,20 +148,13 @@ void Scheduler::delay(uint16_t ms)
         return;
     }
 
-    if (!in_main_thread()) {
-        fprintf(stderr, "Scheduler::delay() called outside main thread\n");
-        return;
-    }
-
     uint64_t start = AP_HAL::millis64();
 
     while ((AP_HAL::millis64() - start) < ms) {
         // this yields the CPU to other apps
         microsleep(1000);
-        if (_min_delay_cb_ms <= ms) {
-            if (_delay_cb) {
-                _delay_cb();
-            }
+        if (in_main_thread() && _min_delay_cb_ms <= ms) {
+            call_delay_cb();
         }
     }
 }
@@ -177,13 +165,6 @@ void Scheduler::delay_microseconds(uint16_t us)
         return;
     }
     microsleep(us);
-}
-
-void Scheduler::register_delay_callback(AP_HAL::Proc proc,
-                                             uint16_t min_time_ms)
-{
-    _delay_cb = proc;
-    _min_delay_cb_ms = min_time_ms;
 }
 
 void Scheduler::register_timer_process(AP_HAL::MemberProc proc)
@@ -224,18 +205,6 @@ void Scheduler::register_timer_failsafe(AP_HAL::Proc failsafe, uint32_t period_u
     _failsafe = failsafe;
 }
 
-void Scheduler::suspend_timer_procs()
-{
-    if (!_timer_semaphore.take(HAL_SEMAPHORE_BLOCK_FOREVER)) {
-        printf("Failed to take timer semaphore\n");
-    }
-}
-
-void Scheduler::resume_timer_procs()
-{
-    _timer_semaphore.give();
-}
-
 void Scheduler::_timer_task()
 {
     int i;
@@ -245,11 +214,6 @@ void Scheduler::_timer_task()
     }
     _in_timer_proc = true;
 
-    if (!_timer_semaphore.take(HAL_SEMAPHORE_BLOCK_FOREVER)) {
-        printf("Failed to take timer semaphore in %s\n", __PRETTY_FUNCTION__);
-        return;
-    }
-
     // now call the timer based drivers
     for (i = 0; i < _num_timer_procs; i++) {
         if (_timer_proc[i]) {
@@ -257,24 +221,12 @@ void Scheduler::_timer_task()
         }
     }
 
-    _timer_semaphore.give();
-
     // and the failsafe, if one is setup
     if (_failsafe != nullptr) {
         _failsafe();
     }
 
     _in_timer_proc = false;
-
-#if HAL_LINUX_UARTS_ON_TIMER_THREAD
-    /*
-       some boards require that UART calls happen on the same
-       thread as other calls of the same time. This impacts the
-       QFLIGHT calls where UART output is an RPC call to the DSPs
-       */
-    _run_uarts();
-    RCInput::from(hal.rcin)->_timer_tick();
-#endif
 
 #if HAL_WITH_UAVCAN
 #if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
@@ -315,20 +267,17 @@ void Scheduler::_run_uarts()
     hal.uartD->_timer_tick();
     hal.uartE->_timer_tick();
     hal.uartF->_timer_tick();
+    hal.uartG->_timer_tick();
 }
 
 void Scheduler::_rcin_task()
 {
-#if !HAL_LINUX_UARTS_ON_TIMER_THREAD
     RCInput::from(hal.rcin)->_timer_tick();
-#endif
 }
 
 void Scheduler::_uart_task()
 {
-#if !HAL_LINUX_UARTS_ON_TIMER_THREAD
     _run_uarts();
-#endif
 }
 
 void Scheduler::_tonealarm_task()
@@ -385,14 +334,6 @@ void Scheduler::stop_clock(uint64_t time_usec)
 
 bool Scheduler::SchedulerThread::_run()
 {
-#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_QFLIGHT
-    if (_sched._timer_thread.is_current_thread()) {
-        /* make rpcmem initialization on timer thread */
-        printf("Initialising rpcmem\n");
-        rpcmem_init();
-    }
-#endif
-
     _sched._wait_all_threads();
 
     return PeriodicThread::_run();
@@ -411,4 +352,68 @@ void Scheduler::teardown()
     _rcin_thread.join();
     _uart_thread.join();
     _tonealarm_thread.join();
+}
+
+/*
+  trampoline for thread create
+*/
+void *Scheduler::thread_create_trampoline(void *ctx)
+{
+    AP_HAL::MemberProc *t = (AP_HAL::MemberProc *)ctx;
+    (*t)();
+    free(t);
+    return nullptr;
+}
+
+/*
+  create a new thread
+*/
+bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_t stack_size, priority_base base, int8_t priority)
+{
+    // take a copy of the MemberProc, it is freed after thread exits
+    AP_HAL::MemberProc *tproc = (AP_HAL::MemberProc *)malloc(sizeof(proc));
+    if (!tproc) {
+        return false;
+    }
+    *tproc = proc;
+
+    uint8_t thread_priority = APM_LINUX_IO_PRIORITY;
+    static const struct {
+        priority_base base;
+        uint8_t p;
+    } priority_map[] = {
+        { PRIORITY_BOOST, APM_LINUX_MAIN_PRIORITY},
+        { PRIORITY_MAIN, APM_LINUX_MAIN_PRIORITY},
+        { PRIORITY_SPI, AP_LINUX_SENSORS_SCHED_PRIO},
+        { PRIORITY_I2C, AP_LINUX_SENSORS_SCHED_PRIO},
+        { PRIORITY_CAN, APM_LINUX_TIMER_PRIORITY},
+        { PRIORITY_TIMER, APM_LINUX_TIMER_PRIORITY},
+        { PRIORITY_RCIN, APM_LINUX_RCIN_PRIORITY},
+        { PRIORITY_IO, APM_LINUX_IO_PRIORITY},
+        { PRIORITY_UART, APM_LINUX_UART_PRIORITY},
+        { PRIORITY_STORAGE, APM_LINUX_IO_PRIORITY},
+    };
+    for (uint8_t i=0; i<ARRAY_SIZE(priority_map); i++) {
+        if (priority_map[i].base == base) {
+            thread_priority = constrain_int16(priority_map[i].p + priority, 1, APM_LINUX_MAX_PRIORITY);
+            break;
+        }
+    }
+    pthread_t thread;
+    pthread_attr_t thread_attr;
+    struct sched_param param;
+
+    pthread_attr_init(&thread_attr);
+    pthread_attr_setstacksize(&thread_attr, stack_size);
+
+    param.sched_priority = thread_priority;
+    (void)pthread_attr_setschedparam(&thread_attr, &param);
+    pthread_attr_setschedpolicy(&thread_attr, SCHED_FIFO);
+
+    if (pthread_create(&thread, &thread_attr, thread_create_trampoline, tproc) != 0) {
+        free(tproc);
+        return false;
+    }
+    pthread_setname_np(thread, name);
+    return true;
 }

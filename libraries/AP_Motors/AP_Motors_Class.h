@@ -136,10 +136,10 @@ public:
     // output_min - sends minimum values out to the motors
     virtual void        output_min() = 0;
 
-    // output_test - spin a motor at the pwm value specified
+    // output_test_seq - spin a motor at the pwm value specified
     //  motor_seq is the motor's sequence number from 1 to the number of motors on the frame
     //  pwm value is an actual pwm value that will be output, normally in the range of 1000 ~ 2000
-    virtual void        output_test(uint8_t motor_seq, int16_t pwm) = 0;
+    virtual void        output_test_seq(uint8_t motor_seq, int16_t pwm) = 0;
 
     // get_motor_mask - returns a bitmask of which outputs are being used for motors (1 means being used)
     //  this can be used to ensure other pwm outputs (i.e. for servos) do not conflict
@@ -165,6 +165,7 @@ protected:
     // output functions that should be overloaded by child classes
     virtual void        output_armed_stabilizing()=0;
     virtual void        rc_write(uint8_t chan, uint16_t pwm);
+    virtual void        rc_write_angle(uint8_t chan, int16_t angle_cd);
     virtual void        rc_set_freq(uint32_t mask, uint16_t freq_hz);
     virtual uint32_t    rc_map_mask(uint32_t mask) const;
 

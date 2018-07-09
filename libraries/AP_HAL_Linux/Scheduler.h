@@ -27,13 +27,9 @@ public:
     void     init();
     void     delay(uint16_t ms);
     void     delay_microseconds(uint16_t us);
-    void     register_delay_callback(AP_HAL::Proc,
-                uint16_t min_time_ms);
 
     void     register_timer_process(AP_HAL::MemberProc);
     void     register_io_process(AP_HAL::MemberProc);
-    void     suspend_timer_procs();
-    void     resume_timer_procs();
 
     bool     in_main_thread() const override;
 
@@ -51,6 +47,11 @@ public:
 
     void teardown();
 
+    /*
+      create a new thread
+     */
+    bool thread_create(AP_HAL::MemberProc, const char *name, uint32_t stack_size, priority_base base, int8_t priority) override;
+    
 private:
     class SchedulerThread : public PeriodicThread {
     public:
@@ -68,9 +69,6 @@ private:
     void _wait_all_threads();
 
     void     _debug_stack();
-
-    AP_HAL::Proc _delay_cb;
-    uint16_t _min_delay_cb_ms;
 
     AP_HAL::Proc _failsafe;
 
@@ -103,8 +101,9 @@ private:
     uint64_t _last_stack_debug_msec;
     pthread_t _main_ctx;
 
-    Semaphore _timer_semaphore;
     Semaphore _io_semaphore;
+
+    static void *thread_create_trampoline(void *ctx);    
 };
 
 }

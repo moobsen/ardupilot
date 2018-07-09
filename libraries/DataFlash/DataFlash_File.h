@@ -11,18 +11,6 @@
 #include <AP_HAL/utility/RingBuffer.h>
 #include "DataFlash_Backend.h"
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_QURT
-/*
-  the QURT port has a limited range of system calls available. It
-  cannot provide all the facilities that DataFlash_File wants. It can
-  provide enough to be useful though, which is what
-  DATAFLASH_FILE_MINIMAL is for
- */
-#define DATAFLASH_FILE_MINIMAL 1
-#else
-#define DATAFLASH_FILE_MINIMAL 0
-#endif
-
 class DataFlash_File : public DataFlash_Backend
 {
 public:
@@ -77,6 +65,9 @@ protected:
 
 private:
     int _write_fd;
+    char *_write_filename;
+    uint32_t _last_write_ms;
+    
     int _read_fd;
     uint16_t _read_fd_log_num;
     uint32_t _read_offset;
@@ -89,11 +80,6 @@ private:
     uint8_t io_thread_warning_decimation_counter;
 
     uint16_t _cached_oldest_log;
-
-    /*
-      read a block
-    */
-    bool ReadBlock(void *pkt, uint16_t size) override;
 
     uint16_t _log_num_from_list_entry(const uint16_t list_entry);
 

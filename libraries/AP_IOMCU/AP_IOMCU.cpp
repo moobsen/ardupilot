@@ -121,8 +121,6 @@ AP_IOMCU::AP_IOMCU(AP_HAL::UARTDriver &_uart) :
  */
 void AP_IOMCU::init(void)
 {
-    //upload_fw(fw_name);
-
     // uart runs at 1.5MBit
     uart.begin(1500*1000, 256, 256);
     uart.set_blocking_writes(false);
@@ -131,25 +129,15 @@ void AP_IOMCU::init(void)
     // check IO firmware CRC
     hal.scheduler->delay(2000);
     
-    check_crc();
-        
-    thread_ctx = chThdCreateFromHeap(NULL,
-                                     THD_WORKING_AREA_SIZE(1024),
-                                     "IOMCU",
-                                     183,
-                                     thread_start,
-                                     this);
-    if (thread_ctx == nullptr) {
+    AP_BoardConfig *boardconfig = AP_BoardConfig::get_instance();
+    if (!boardconfig || boardconfig->io_enabled() == 1) {
+        check_crc();
+    }
+
+    if (!hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_IOMCU::thread_main, void), "IOMCU",
+                                      1024, AP_HAL::Scheduler::PRIORITY_BOOST, 1)) {
         AP_HAL::panic("Unable to allocate IOMCU thread");
     }
-}
-
-/*
-  static function to enter thread_main()
- */
-void AP_IOMCU::thread_start(void *ctx)
-{
-    ((AP_IOMCU *)ctx)->thread_main();
 }
 
 /*
@@ -655,9 +643,8 @@ bool AP_IOMCU::check_crc(void)
 {
     // flash size minus 4k bootloader
 	const uint32_t flash_size = 0x10000 - 0x1000;
-    uint32_t fw_size;
     
-    fw = AP_ROMFS::find_file(fw_name, fw_size);
+    fw = AP_ROMFS::find_decompress(fw_name, fw_size);
     if (!fw) {
         hal.console->printf("failed to find %s\n", fw_name);
         return false;
@@ -676,14 +663,22 @@ bool AP_IOMCU::check_crc(void)
         io_crc == crc) {
         hal.console->printf("IOMCU: CRC ok\n");
         crc_is_ok = true;
+        free(fw);
+        fw = nullptr;
         return true;
     }
 
     const uint16_t magic = REBOOT_BL_MAGIC;
     write_registers(PAGE_SETUP, PAGE_REG_SETUP_REBOOT_BL, 1, &magic);
-    hal.scheduler->delay(100);
-    upload_fw(fw_name);
 
+    if (!upload_fw()) {
+        free(fw);
+        fw = nullptr;
+        AP_BoardConfig::sensor_config_error("Failed to update IO firmware");
+    }
+    
+    free(fw);
+    fw = nullptr;
     return false;
 }
 

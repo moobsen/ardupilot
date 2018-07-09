@@ -85,6 +85,7 @@
 #include <AP_BoardConfig/AP_BoardConfig_CAN.h>
 #include <AP_Frsky_Telem/AP_Frsky_Telem.h>
 #include <AP_Devo_Telem/AP_Devo_Telem.h>
+#include <AP_OSD/AP_OSD.h>
 #include <AP_ServoRelayEvents/AP_ServoRelayEvents.h>
 
 #include <AP_Rally/AP_Rally.h>
@@ -123,7 +124,7 @@
 class AP_AdvancedFailsafe_Plane : public AP_AdvancedFailsafe
 {
 public:
-    AP_AdvancedFailsafe_Plane(AP_Mission &_mission, const AP_GPS &_gps, const RCMapper &_rcmap);
+    AP_AdvancedFailsafe_Plane(AP_Mission &_mission, const AP_GPS &_gps);
 
     // called to set all outputs to termination state
     void terminate_vehicle(void);
@@ -158,7 +159,6 @@ public:
     void loop() override;
 
 private:
-    static const AP_FWVersion fwver;
 
     // key aircraft parameters passed to multiple libraries
     AP_Vehicle::FixedWing aparm;
@@ -290,6 +290,10 @@ private:
     // RSSI
     AP_RSSI rssi;
 
+#if OSD_ENABLED == ENABLED
+    AP_OSD osd;
+#endif
+    
     // This is the state of the flight control system
     // There are multiple states defined such as MANUAL, FBW-A, AUTO
     enum FlightMode control_mode = INITIALISING;
@@ -371,9 +375,6 @@ private:
     // Similar to airspeed_nudge, but used when no airspeed sensor.
     // 0-(throttle_max - throttle_cruise) : throttle nudge in Auto mode using top 1/2 of throttle stick travel
     int16_t throttle_nudge;
-
-    // receiver RSSI
-    uint8_t receiver_rssi;
 
     // Ground speed
     // The amount current ground speed is below min ground speed.  Centimeters per second
@@ -629,7 +630,7 @@ private:
     AP_Avoidance_Plane avoidance_adsb{ahrs, adsb};
 
     // Outback Challenge Failsafe Support
-    AP_AdvancedFailsafe_Plane afs {mission, gps, rcmap};
+    AP_AdvancedFailsafe_Plane afs {mission, gps};
 
     /*
       meta data to support counting the number of circles in a loiter
@@ -746,15 +747,12 @@ private:
 #endif
 
     // Arming/Disarming mangement class
-    AP_Arming_Plane arming{ahrs, compass, battery};
+    AP_Arming_Plane arming;
 
     AP_Param param_loader {var_info};
 
     static const AP_Scheduler::Task scheduler_tasks[];
     static const AP_Param::Info var_info[];
-
-    // use this to prevent recursion during sensor init
-    bool in_mavlink_delay = false;
 
     // time that rudder arming has been running
     uint32_t rudder_arm_timer;
@@ -774,16 +772,11 @@ private:
     
     void adjust_nav_pitch_throttle(void);
     void update_load_factor(void);
-    void send_attitude(mavlink_channel_t chan);
     void send_fence_status(mavlink_channel_t chan);
     void update_sensor_status_flags(void);
     void send_extended_status1(mavlink_channel_t chan);
-    void send_location(mavlink_channel_t chan);
     void send_nav_controller_output(mavlink_channel_t chan);
-    void send_position_target_global_int(mavlink_channel_t chan);
     void send_servo_out(mavlink_channel_t chan);
-    void send_vfr_hud(mavlink_channel_t chan);
-    void send_simstate(mavlink_channel_t chan);
     void send_wind(mavlink_channel_t chan);
     void send_pid_info(const mavlink_channel_t chan, const DataFlash_Class::PID_Info *pid_info, const uint8_t axis, const float achieved);
     void send_pid_tuning(mavlink_channel_t chan);
@@ -806,10 +799,7 @@ private:
     void Log_Write_Sonar();
     void Log_Write_Optflow();
     void Log_Arm_Disarm();
-    void Log_Write_IMU();
     void Log_Write_RC(void);
-    void Log_Write_Airspeed(void);
-    void Log_Write_Home_And_Origin();
     void Log_Write_Vehicle_Startup_Messages();
     void Log_Write_AOA_SSA();
     void Log_Write_AETR();
@@ -842,9 +832,11 @@ private:
     void rangefinder_height_update(void);
     void set_next_WP(const struct Location &loc);
     void set_guided_WP(void);
-    void init_home();
     void update_home();
-    void set_ekf_origin(const Location& loc);
+    // set home location and store it persistently:
+    void set_home_persistently(const Location &loc);
+    // set home location:
+    void set_home(const Location &loc);
     void do_RTL(int32_t alt);
     bool verify_takeoff();
     bool verify_loiter_unlim();
@@ -918,17 +910,11 @@ private:
     void rudder_arm_disarm_check();
     void read_radio();
     void control_failsafe();
-    void trim_control_surfaces();
-    void trim_radio();
+    bool trim_radio();
     bool rc_failsafe_active(void);
-    void init_rangefinder(void);
     void read_rangefinder(void);
     void read_airspeed(void);
-    void read_receiver_rssi(void);
     void rpm_update(void);
-    void button_update(void);
-    void stats_update();
-    void ice_update(void);
     void init_ardupilot();
     void startup_ground(void);
     enum FlightMode get_previous_mode();
@@ -942,7 +928,7 @@ private:
     int8_t throttle_percentage(void);
     void change_arm_state(void);
     bool disarm_motors(void);
-    bool arm_motors(AP_Arming::ArmingMethod method);
+    bool arm_motors(AP_Arming::ArmingMethod method, bool do_arming_checks=true);
     bool auto_takeoff_check(void);
     void takeoff_calc_roll(void);
     void takeoff_calc_pitch(void);
@@ -958,16 +944,12 @@ private:
     void afs_fs_check(void);
     void compass_accumulate(void);
     void compass_cal_update();
-    void barometer_accumulate(void);
     void update_optical_flow(void);
     void one_second_loop(void);
     void airspeed_ratio_update(void);
-    void update_mount(void);
-    void update_trigger(void);    
     void compass_save(void);
     void update_logging1(void);
     void update_logging2(void);
-    void terrain_update(void);
     void avoidance_adsb_update(void);
     void update_flight_mode(void);
     void stabilize();
@@ -1040,8 +1022,6 @@ private:
     void notify_flight_mode(enum FlightMode mode);
     void log_init();
     void init_capabilities(void);
-    void ins_periodic();
-    void dataflash_periodic(void);
     void parachute_check();
 #if PARACHUTE == ENABLED
     void do_parachute(const AP_Mission::Mission_Command& cmd);

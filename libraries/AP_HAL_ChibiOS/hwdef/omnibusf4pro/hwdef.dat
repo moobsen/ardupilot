@@ -1,11 +1,13 @@
 # hw definition file for processing by chibios_pins.py
-# Omnibus F4 PRO, Omnibus F4 V3-V5 boards with F405 mcu, mpu6000 imu, bmp280 barometer and sdcard
+# Omnibus F4 PRO, Omnibus F4 V3 boards
+# with F405 mcu, mpu6000 imu, bmp280 barometer, 7456 series osd  and sdcard
+
 MCU STM32F4xx STM32F405xx
 
 HAL_CHIBIOS_ARCH_F405 1
 
 # board ID for firmware load
-APJ_BOARD_ID 70
+APJ_BOARD_ID 131
 
 # crystal frequency
 OSCILLATOR_HZ 8000000
@@ -19,9 +21,6 @@ STM32_ST_USE_TIMER 5
 # flash size
 FLASH_SIZE_KB 1024
 FLASH_RESERVE_START_KB 64
-
-CCM_RAM_SIZE_KB 64
-RAM_SIZE_KB 128
 
 # order of I2C buses
 I2C_ORDER I2C2
@@ -77,13 +76,20 @@ PA11 OTG_FS_DM OTG1
 PA12 OTG_FS_DP OTG1
 PC5 VBUS INPUT OPENDRAIN
 
+# "PPM" solder pad/resistor should be soldered and "S-BUS" resistor/solder pad removed
+# Overwise UART1 or UART6 or RCIN will not work
 PB8 TIM4_CH3 TIM4 RCININT PULLDOWN LOW
+
+#Omnibus F4 V3 and later had hw inverter on UART6
+#Overide it to use as GPS UART port
+PC8 SBUS_INVERT_RX OUTPUT LOW
+PC9 SBUS_INVERT_TX OUTPUT LOW
 
 # SPI Device table 
 SPIDEV mpu6000    SPI1 DEVID1 MPU6000_CS MODE3 1*MHZ 8*MHZ
-SPIDEV sdcard     SPI2 DEVID2 SDCARD_CS MODE3 1*MHZ 16*MHZ
+SPIDEV sdcard     SPI2 DEVID2 SDCARD_CS MODE0 400*KHZ 25*MHZ
 SPIDEV bmp280     SPI3 DEVID3 BMP280_CS MODE3 1*MHZ 8*MHZ
-SPIDEV osd        SPI3 DEVID4 OSD_CS MODE0 1*MHZ 4*MHZ
+SPIDEV osd        SPI3 DEVID4 OSD_CS MODE0 10*MHZ 10*MHZ
 
 define CONFIG_HAL_BOARD_SUBTYPE HAL_BOARD_SUBTYPE_CHIBIOS_OMNIBUSF4PRO
 
@@ -97,17 +103,37 @@ define HAL_COMPASS_DEFAULT HAL_COMPASS_HMC5843
 define HAL_COMPASS_HMC5843_I2C_BUS 0
 define HAL_COMPASS_HMC5843_I2C_ADDR 0x1E
 
+# there is no compass fitted by default
+define ALLOW_ARM_NO_COMPASS
+
 define STORAGE_FLASH_PAGE 1
-define HAL_STORAGE_SIZE 8192
+define HAL_STORAGE_SIZE 15360
+
+define HAL_OS_FATFS_IO 1
+define HAL_BOARD_LOG_DIRECTORY "/APM/LOGS"
+define HAL_BOARD_TERRAIN_DIRECTORY "/APM/TERRAIN"
+define HAL_DATAFLASH_FILE_BUFSIZE 8
+define HAL_DATAFLASH_MAV_BUFSIZE 2
 
 # define default battery setup
-define HAL_BATT_VOLT_PIN 8
-define HAL_BATT_CURR_PIN 7
+define HAL_BATT_VOLT_PIN 12
+define HAL_BATT_CURR_PIN 11
 define HAL_BATT_VOLT_SCALE 11
-define HAL_BATT_CURR_SCALE 38.0
+define HAL_BATT_CURR_SCALE 18.2
 
 define HAL_GPIO_A_LED_PIN 57
 
+define OSD_ENABLED ENABLED
+
+#To complementary channels work we define this
 define STM32_PWM_USE_ADVANCED TRUE
 
 define BOARD_PWM_COUNT_DEFAULT 6
+
+#define CH_DBG_ENABLE_ASSERTS TRUE
+#define CH_DBG_ENABLE_CHECKS TRUE
+#define CH_DBG_SYSTEM_STATE_CHECK TRUE
+#define CH_DBG_ENABLE_STACK_CHECK TRUE
+
+#font for the osd
+ROMFS_WILDCARD libraries/AP_OSD/fonts/font*.bin

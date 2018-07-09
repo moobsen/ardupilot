@@ -219,8 +219,8 @@
 
 //////////////////////////////////////////////////////////////////////////////
 //  Crop Sprayer - enabled only on larger firmwares
-#ifndef SPRAYER
- # define SPRAYER  !HAL_MINIMIZE_FEATURES
+#ifndef SPRAYER_ENABLED
+ # define SPRAYER_ENABLED  !HAL_MINIMIZE_FEATURES
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
@@ -668,6 +668,10 @@
   #error AC_Avoidance relies on AC_FENCE which is disabled
 #endif
 
+#if MODE_FOLLOW_ENABLED && !AC_AVOID_ENABLED
+  #error Follow Mode relies on AC_AVOID which is disabled
+#endif
+
 #if MODE_AUTO_ENABLED && !MODE_GUIDED_ENABLED
   #error ModeAuto requires ModeGuided which is disabled
 #endif
@@ -723,4 +727,8 @@
 #else
  #define DEVO_TELEM_ENABLED ENABLED
 #endif
+#endif
+
+#ifndef OSD_ENABLED
+ #define OSD_ENABLED DISABLED
 #endif

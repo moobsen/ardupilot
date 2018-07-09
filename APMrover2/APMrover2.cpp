@@ -49,8 +49,7 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK(read_rangefinders,      50,    200),
     SCHED_TASK(update_current_mode,    50,    200),
     SCHED_TASK(set_servos,             50,    200),
-    SCHED_TASK_CLASS(AP_GPS,              &rover.gps,              update,         50,  300),
-    SCHED_TASK(update_GPS_10Hz,        10,    300),
+    SCHED_TASK(update_GPS,             50,    300),
     SCHED_TASK_CLASS(AP_Baro,             &rover.barometer,        update,         10,  200),
     SCHED_TASK_CLASS(AP_Beacon,           &rover.g2.beacon,        update,         50,  200),
     SCHED_TASK_CLASS(AP_Proximity,        &rover.g2.proximity,     update,         50,  200),
@@ -66,9 +65,7 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK(read_control_switch,     7,    200),
     SCHED_TASK(read_aux_switch,        10,    200),
     SCHED_TASK_CLASS(AP_BattMonitor,      &rover.battery,          read,           10,  300),
-    SCHED_TASK(read_receiver_rssi,     10,    200),
     SCHED_TASK_CLASS(AP_ServoRelayEvents, &rover.ServoRelayEvents, update_events,  50,  200),
-    SCHED_TASK(check_usb_mux,           3,    200),
 #if MOUNT == ENABLED
     SCHED_TASK_CLASS(AP_Mount,            &rover.camera_mount,     update,         50,  200),
 #endif
@@ -82,8 +79,11 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK_CLASS(AP_Notify,           &rover.notify,           update,         50,  300),
     SCHED_TASK(one_second_loop,         1,   1500),
     SCHED_TASK(compass_cal_update,     50,    200),
+    SCHED_TASK(compass_save,           0.1,   200),
     SCHED_TASK(accel_cal_update,       10,    200),
+#if LOGGING_ENABLED == ENABLED
     SCHED_TASK_CLASS(DataFlash_Class,     &rover.DataFlash,        periodic_tasks, 50,  300),
+#endif
     SCHED_TASK_CLASS(AP_InertialSensor,   &rover.ins,              periodic,       50,  200),
     SCHED_TASK_CLASS(AP_Scheduler,        &rover.scheduler,        update_logging, 0.1, 200),
     SCHED_TASK_CLASS(AP_Button,           &rover.button,           update,          5,  200),
@@ -105,7 +105,7 @@ constexpr int8_t Rover::_failsafe_priorities[7];
 */
 void Rover::stats_update(void)
 {
-    g2.stats.set_flying(motor_active());
+    g2.stats.set_flying(g2.motors.active());
     g2.stats.update();
 }
 #endif
@@ -150,13 +150,13 @@ void Rover::ahrs_update()
     gcs_update();
 #endif
 
-    // when in reverse we need to tell AHRS not to assume we are a
-    // 'fly forward' vehicle, otherwise it will see a large
-    // discrepancy between the mag and the GPS heading and will try to
-    // correct for it, leading to a large yaw error
-    ahrs.set_fly_forward(!in_reverse);
+    // AHRS may use movement to calculate heading
+    update_ahrs_flyforward();
 
     ahrs.update();
+
+    // update position
+    have_position = ahrs.get_position(current_loc);
 
     // update home from EKF if necessary
     update_home_from_EKF();
@@ -197,7 +197,7 @@ void Rover::update_compass(void)
         ahrs.set_compass(&compass);
         // update offsets
         if (should_log(MASK_LOG_COMPASS)) {
-            DataFlash.Log_Write_Compass(compass);
+            DataFlash.Log_Write_Compass();
         }
     }
 }
@@ -274,18 +274,6 @@ void Rover::one_second_loop(void)
     // cope with changes to mavlink system ID
     mavlink_system.sysid = g.sysid_this_mav;
 
-    static uint8_t counter;
-
-    counter++;
-
-    // save compass offsets once a minute
-    if (counter >= 60) {
-        if (g.compass_enabled) {
-            compass.save_offsets();
-        }
-        counter = 0;
-    }
-
     // update home position if not soft armed and gps position has
     // changed. Update every 1s at most
     if (!hal.util->get_soft_armed() &&
@@ -300,15 +288,12 @@ void Rover::one_second_loop(void)
     update_sensor_status_flags();
 }
 
-void Rover::update_GPS_10Hz(void)
+void Rover::update_GPS(void)
 {
-    have_position = ahrs.get_position(current_loc);
-
+    gps.update();
     if (gps.last_message_time_ms() != last_gps_msg_ms) {
         last_gps_msg_ms = gps.last_message_time_ms();
 
-        // set system time if necessary
-        set_system_time_from_GPS();
 #if CAMERA == ENABLED
         camera.update();
 #endif

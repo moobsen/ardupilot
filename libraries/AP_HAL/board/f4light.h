@@ -1,5 +1,6 @@
 #include <AP_HAL_F4Light/hardware/hal/syscalls.h>
 #include <AP_HAL_F4Light/params.h>
+#include <AP_HAL_F4Light/wirish/boards.h>
 
 #define HAL_NEEDS_PARAM_HELPER
 
@@ -36,7 +37,7 @@
 
 
 #ifdef BOARD_BUZZER_PIN
-#define BUZZER_PIN                      BOARD_BUZZER_PIN
+#define HAL_BUZZER_PIN                  BOARD_BUZZER_PIN
 #endif
 
 # define PUSHBUTTON_PIN                 BOARD_PUSHBUTTON_PIN

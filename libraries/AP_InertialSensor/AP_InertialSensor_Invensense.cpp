@@ -31,8 +31,6 @@ extern const AP_HAL::HAL& hal;
 #include <AP_HAL_Linux/GPIO.h>
 #if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBOARD || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF
 #define INVENSENSE_DRDY_PIN BBB_P8_14
-#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_MINLURE
-#define INVENSENSE_DRDY_PIN MINNOW_GPIO_I2S_CLK
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_DISCO || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BEBOP
 #define INVENSENSE_EXT_SYNC_ENABLE 1
 #endif
@@ -262,7 +260,11 @@ void AP_InertialSensor_Invensense::start()
     // update backend sample rate
     _set_accel_raw_sample_rate(_accel_instance, _backend_rate_hz);
     _set_gyro_raw_sample_rate(_gyro_instance, _backend_rate_hz);
-      
+
+    // indicate what multiplier is appropriate for the sensors'
+    // readings to fit them into an int16_t:
+    _set_raw_sample_accel_multiplier(_accel_instance, multiplier_accel);
+
     if (_fast_sampling) {
         hal.console->printf("MPU[%u]: enabled fast sampling rate %uHz/%uHz\n",
                             _accel_instance, _backend_rate_hz*_fifo_downsample_rate, _backend_rate_hz);
@@ -445,7 +447,7 @@ bool AP_InertialSensor_Invensense::_accumulate(uint8_t *samples, uint8_t n_sampl
   gives very good aliasing rejection at frequencies well above what
   can be handled with 1kHz sample rates.
  */
-bool AP_InertialSensor_Invensense::_accumulate_fast_sampling(uint8_t *samples, uint8_t n_samples)
+bool AP_InertialSensor_Invensense::_accumulate_sensor_rate_sampling(uint8_t *samples, uint8_t n_samples)
 {
     int32_t tsum = 0;
     const int32_t clip_limit = AP_INERTIAL_SENSOR_ACCEL_CLIP_THRESH_MSS / _accel_scale;
@@ -476,11 +478,16 @@ bool AP_InertialSensor_Invensense::_accumulate_fast_sampling(uint8_t *samples, u
                 clipped = true;
             }
             _accum.accel += _accum.accel_filter.apply(a);
+            Vector3f a2 = a * _accel_scale;
+            _notify_new_accel_sensor_rate_sample(_accel_instance, a2);
         }
 
         Vector3f g(int16_val(data, 5),
                    int16_val(data, 4),
                    -int16_val(data, 6));
+
+        Vector3f g2 = g * GYRO_SCALE;
+        _notify_new_gyro_sensor_rate_sample(_gyro_instance, g2);
 
         _accum.gyro += _accum.gyro_filter.apply(g);
         _accum.count++;
@@ -578,7 +585,7 @@ void AP_InertialSensor_Invensense::_read_fifo()
         }
 
         if (_fast_sampling) {
-            if (!_accumulate_fast_sampling(rx, n)) {
+            if (!_accumulate_sensor_rate_sampling(rx, n)) {
                 debug("IMU[%u] stop at %u of %u", _accel_instance, n_samples, bytes_read/MPU_SAMPLE_SIZE);
                 break;
             }
@@ -673,6 +680,9 @@ void AP_InertialSensor_Invensense::_set_filter_register(void)
             // for logging purposes set the oversamping rate
             _set_accel_oversampling(_accel_instance, _fifo_downsample_rate/2);
             _set_gyro_oversampling(_gyro_instance, _fifo_downsample_rate);
+
+            _set_accel_sensor_rate_sampling_enabled(_accel_instance, true);
+            _set_gyro_sensor_rate_sampling_enabled(_gyro_instance, true);
 
             /* set divider for internal sample rate to 0x1F when fast
              sampling enabled. This reduces the impact of the slave

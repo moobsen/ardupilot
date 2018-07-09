@@ -120,8 +120,8 @@ const AP_Param::GroupInfo AP_MotorsHeli_Single::var_info[] = {
 
     // @Param: COL_CTRL_DIR
     // @DisplayName: Collective Control Direction
-    // @Description: Collective Control Direction - 0 for Normal. 1 for Reversed
-    // @Values: 0: Normal, 1: Reversed
+    // @Description: Direction collective moves for positive pitch. 0 for Normal, 1 for Reversed
+    // @Values: 0:Normal,1:Reversed
     // @User: Standard
     AP_GROUPINFO("COL_CTRL_DIR", 19, AP_MotorsHeli_Single, _collective_direction, AP_MOTORS_HELI_SINGLE_COLLECTIVE_DIRECTION_NORMAL),
 
@@ -180,10 +180,10 @@ bool AP_MotorsHeli_Single::init_outputs()
     return true;
 }
 
-// output_test - spin a motor at the pwm value specified
+// output_test_seq - spin a motor at the pwm value specified
 //  motor_seq is the motor's sequence number from 1 to the number of motors on the frame
 //  pwm value is an actual pwm value that will be output, normally in the range of 1000 ~ 2000
-void AP_MotorsHeli_Single::output_test(uint8_t motor_seq, int16_t pwm)
+void AP_MotorsHeli_Single::output_test_seq(uint8_t motor_seq, int16_t pwm)
 {
     // exit immediately if not armed
     if (!armed()) {

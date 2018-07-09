@@ -27,11 +27,14 @@
 #include <AP_HAL_ChibiOS/RCInput.h>
 #include <AP_HAL_ChibiOS/CAN.h>
 
+#if CH_CFG_USE_DYNAMIC == TRUE
+
+#include <DataFlash/DataFlash.h>
 #include <AP_Scheduler/AP_Scheduler.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
+#include "hwdef/common/stm32_util.h"
 #include "shared_dma.h"
-
-#if CH_CFG_USE_DYNAMIC == TRUE
+#include "sdcard.h"
 
 using namespace ChibiOS;
 
@@ -48,12 +51,13 @@ THD_WORKING_AREA(_uavcan_thread_wa, 4096);
 #endif
 
 Scheduler::Scheduler()
-{}
+{
+}
 
 void Scheduler::init()
 {
-    chVTObjectInit(&_boost_timer);
-    
+    chBSemObjectInit(&_timer_semaphore, false);
+    chBSemObjectInit(&_io_semaphore, false);
     // setup the timer thread - this will call tasks at 1kHz
     _timer_thread_ctx = chThdCreateStatic(_timer_thread_wa,
                      sizeof(_timer_thread_wa),
@@ -132,12 +136,13 @@ static void set_high_priority()
 /*
   return the main thread to normal priority
  */
-static void set_normal_priority(void *ctx)
+void Scheduler::boost_end(void)
 {
 #if APM_MAIN_PRIORITY_BOOST != APM_MAIN_PRIORITY
-    thread_t *task = (thread_t *)ctx;
-    // we don't need a reschedule as that happens automatically on ISR exit
-    task->realprio = APM_MAIN_PRIORITY;
+    if (in_main_thread() && _priority_boosted) {
+        _priority_boosted = false;
+        hal_chibios_set_priority(APM_MAIN_PRIORITY);
+    }
 #endif
 }
 
@@ -149,9 +154,11 @@ static void set_normal_priority(void *ctx)
  */
 void Scheduler::delay_microseconds_boost(uint16_t usec)
 {
-    set_high_priority();
+    if (in_main_thread()) {
+        set_high_priority();
+        _priority_boosted = true;
+    }
     delay_microseconds(usec); //Suspends Thread for desired microseconds
-    chVTSet(&_boost_timer, US2ST(200), set_normal_priority, chThdGetSelfX());
     _called_boost = true;
 }
 
@@ -169,33 +176,24 @@ bool Scheduler::check_called_boost(void)
 
 void Scheduler::delay(uint16_t ms)
 {
-    if (!in_main_thread()) {
-        //chprintf("ERROR: delay() from timer process\n");
-        return;
-    }
     uint64_t start = AP_HAL::micros64();
 
     while ((AP_HAL::micros64() - start)/1000 < ms) {
         delay_microseconds(1000);
         if (_min_delay_cb_ms <= ms) {
-            if (_delay_cb) {
-                _delay_cb();
+            if (in_main_thread()) {
+                call_delay_cb();
             }
         }
     }
 }
 
-void Scheduler::register_delay_callback(AP_HAL::Proc proc,
-                                            uint16_t min_time_ms)
-{
-    _delay_cb = proc;
-    _min_delay_cb_ms = min_time_ms;
-}
-
 void Scheduler::register_timer_process(AP_HAL::MemberProc proc)
 {
+    chBSemWait(&_timer_semaphore);
     for (uint8_t i = 0; i < _num_timer_procs; i++) {
         if (_timer_proc[i] == proc) {
+            chBSemSignal(&_timer_semaphore);
             return;
         }
     }
@@ -206,22 +204,26 @@ void Scheduler::register_timer_process(AP_HAL::MemberProc proc)
     } else {
         hal.console->printf("Out of timer processes\n");
     }
+    chBSemSignal(&_timer_semaphore);
 }
 
 void Scheduler::register_io_process(AP_HAL::MemberProc proc)
 {
+    chBSemWait(&_io_semaphore);
     for (uint8_t i = 0; i < _num_io_procs; i++) {
         if (_io_proc[i] == proc) {
+            chBSemSignal(&_io_semaphore);
             return;
         }
     }
-
+    
     if (_num_io_procs < CHIBIOS_SCHEDULER_MAX_TIMER_PROCS) {
         _io_proc[_num_io_procs] = proc;
         _num_io_procs++;
     } else {
         hal.console->printf("Out of IO processes\n");
     }
+    chBSemSignal(&_io_semaphore);
 }
 
 void Scheduler::register_timer_failsafe(AP_HAL::Proc failsafe, uint32_t period_us)
@@ -229,56 +231,44 @@ void Scheduler::register_timer_failsafe(AP_HAL::Proc failsafe, uint32_t period_u
     _failsafe = failsafe;
 }
 
-void Scheduler::suspend_timer_procs()
-{
-    _timer_suspended = true;
-}
-
-void Scheduler::resume_timer_procs()
-{
-    _timer_suspended = false;
-    if (_timer_event_missed == true) {
-        _run_timers(false);
-        _timer_event_missed = false;
-    }
-}
-extern void Reset_Handler();
 void Scheduler::reboot(bool hold_in_bootloader)
 {
     // disarm motors to ensure they are off during a bootloader upload
     hal.rcout->force_safety_on();
     hal.rcout->force_safety_no_wait();
 
-    // lock all shared DMA channels. This has the effect of waiting
-    // till the sensor buses are idle
-    Shared_DMA::lock_all();
+    //stop logging
+    DataFlash_Class::instance()->StopLogging();
+
+    // stop sdcard driver, if active
+    sdcard_stop();
+
+    // setup RTC for fast reboot
+    set_fast_reboot(hold_in_bootloader?RTC_BOOT_HOLD:RTC_BOOT_FAST);
+
+    // disable all interrupt sources
+    port_disable();
     
-    // delay to ensure the async force_saftey operation completes
-    delay(500);
-
-    // disable interrupts during reboot
-    chSysDisable();
-
     // reboot
     NVIC_SystemReset();
 }
 
-void Scheduler::_run_timers(bool called_from_timer_thread)
+void Scheduler::_run_timers()
 {
     if (_in_timer_proc) {
         return;
     }
     _in_timer_proc = true;
 
-    if (!_timer_suspended) {
-        // now call the timer based drivers
-        for (int i = 0; i < _num_timer_procs; i++) {
-            if (_timer_proc[i]) {
-                _timer_proc[i]();
-            }
+    int num_procs = 0;
+    chBSemWait(&_timer_semaphore);
+    num_procs = _num_timer_procs;
+    chBSemSignal(&_timer_semaphore);
+    // now call the timer based drivers
+    for (int i = 0; i < num_procs; i++) {
+        if (_timer_proc[i]) {
+            _timer_proc[i]();
         }
-    } else if (called_from_timer_thread) {
-        _timer_event_missed = true;
     }
 
     // and the failsafe, if one is setup
@@ -306,7 +296,7 @@ void Scheduler::_timer_thread(void *arg)
         sched->delay_microseconds(1000);
 
         // run registered timers
-        sched->_run_timers(true);
+        sched->_run_timers();
 
         // process any pending RC output requests
         hal.rcout->timer_tick();
@@ -321,9 +311,9 @@ void Scheduler::_uavcan_thread(void *arg)
         sched->delay_microseconds(20000);
     }
     while (true) {
-        sched->delay_microseconds(1000);
+        sched->delay_microseconds(300);
         for (int i = 0; i < MAX_NUMBER_OF_CAN_INTERFACES; i++) {
-            if(hal.can_mgr[i] != nullptr) {
+            if (AP_UAVCAN::get_uavcan(i) != nullptr) {
                 CANManager::from(hal.can_mgr[i])->_timer_tick();
             }
         }
@@ -367,12 +357,14 @@ void Scheduler::_run_io(void)
     }
     _in_io_proc = true;
 
-    if (!_timer_suspended) {
-        // now call the IO based drivers
-        for (int i = 0; i < _num_io_procs; i++) {
-            if (_io_proc[i]) {
-                _io_proc[i]();
-            }
+    int num_procs = 0;
+    chBSemWait(&_io_semaphore);
+    num_procs = _num_io_procs;
+    chBSemSignal(&_io_semaphore);
+    // now call the IO based drivers
+    for (int i = 0; i < num_procs; i++) {
+        if (_io_proc[i]) {
+            _io_proc[i]();
         }
     }
 
@@ -439,6 +431,63 @@ void *Scheduler::disable_interrupts_save(void)
 void Scheduler::restore_interrupts(void *state)
 {
     chSysRestoreStatusX((syssts_t)(uintptr_t)state);
+}
+
+/*
+  trampoline for thread create
+*/
+void Scheduler::thread_create_trampoline(void *ctx)
+{
+    AP_HAL::MemberProc *t = (AP_HAL::MemberProc *)ctx;
+    (*t)();
+    free(t);
+}
+
+/*
+  create a new thread
+*/
+bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_t stack_size, priority_base base, int8_t priority)
+{
+    // take a copy of the MemberProc, it is freed after thread exits
+    AP_HAL::MemberProc *tproc = (AP_HAL::MemberProc *)malloc(sizeof(proc));
+    if (!tproc) {
+        return false;
+    }
+    *tproc = proc;
+
+    uint8_t thread_priority = APM_IO_PRIORITY;
+    static const struct {
+        priority_base base;
+        uint8_t p;
+    } priority_map[] = {
+        { PRIORITY_BOOST, APM_MAIN_PRIORITY_BOOST},
+        { PRIORITY_MAIN, APM_MAIN_PRIORITY},
+        { PRIORITY_SPI, APM_SPI_PRIORITY},
+        { PRIORITY_I2C, APM_I2C_PRIORITY},
+        { PRIORITY_CAN, APM_CAN_PRIORITY},
+        { PRIORITY_TIMER, APM_TIMER_PRIORITY},
+        { PRIORITY_RCIN, APM_RCIN_PRIORITY},
+        { PRIORITY_IO, APM_IO_PRIORITY},
+        { PRIORITY_UART, APM_UART_PRIORITY},
+        { PRIORITY_STORAGE, APM_STORAGE_PRIORITY},
+    };
+    for (uint8_t i=0; i<ARRAY_SIZE(priority_map); i++) {
+        if (priority_map[i].base == base) {
+            thread_priority = constrain_int16(priority_map[i].p + priority, LOWPRIO, HIGHPRIO);
+            break;
+        }
+    }
+    thread_t *thread_ctx = chThdCreateFromHeap(NULL,
+                                               THD_WORKING_AREA_SIZE(stack_size),
+                                               name,
+                                               thread_priority,
+                                               thread_create_trampoline,
+                                               tproc);
+    if (thread_ctx == nullptr) {
+        free(tproc);
+        return false;
+    }
+    return true;
 }
 
 #endif // CH_CFG_USE_DYNAMIC

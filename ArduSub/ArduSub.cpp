@@ -61,7 +61,7 @@ const AP_Scheduler::Task Sub::scheduler_tasks[] = {
     SCHED_TASK(accel_cal_update,      10,    100),
     SCHED_TASK(terrain_update,        10,    100),
 #if GRIPPER_ENABLED == ENABLED
-    SCHED_TASK_CLASS(AP_Gripper,          &g2.gripper,       update,              10,  75),
+    SCHED_TASK_CLASS(AP_Gripper,          &sub.g2.gripper,       update,              10,  75),
 #endif
 #ifdef USERHOOK_FASTLOOP
     SCHED_TASK(userhook_FastLoop,    100,     75),
@@ -158,13 +158,13 @@ void Sub::fifty_hz_loop()
     failsafe_sensors_check();
 
     // Update rc input/output
-    RC_Channels::set_pwm_all();
+    RC_Channels::read_input();
     SRV_Channels::output_ch_all();
 }
 
 // update_batt_compass - read battery and compass
 // should be called at 10hz
-void Sub::update_batt_compass(void)
+void Sub::update_batt_compass()
 {
     // read battery before compass because it may be used for motor interference compensation
     battery.read();
@@ -175,7 +175,7 @@ void Sub::update_batt_compass(void)
         compass.read();
         // log compass information
         if (should_log(MASK_LOG_COMPASS) && !ahrs.have_ekf_logging()) {
-            DataFlash.Log_Write_Compass(compass);
+            DataFlash.Log_Write_Compass();
         }
     }
 }
@@ -292,7 +292,7 @@ void Sub::one_hz_loop()
 }
 
 // called at 50hz
-void Sub::update_GPS(void)
+void Sub::update_GPS()
 {
     static uint32_t last_gps_reading[GPS_MAX_INSTANCES];   // time of last gps message
     bool gps_updated = false;
@@ -309,16 +309,13 @@ void Sub::update_GPS(void)
     }
 
     if (gps_updated) {
-        // set system time if necessary
-        set_system_time_from_GPS();
-
 #if CAMERA == ENABLED
         camera.update();
 #endif
     }
 }
 
-void Sub::read_AHRS(void)
+void Sub::read_AHRS()
 {
     // Perform IMU calculations and get attitude info
     //-----------------------------------------------
@@ -341,6 +338,7 @@ void Sub::update_altitude()
 
 bool Sub::control_check_barometer()
 {
+#if CONFIG_HAL_BOARD != HAL_BOARD_SITL
     if (!ap.depth_sensor_present) { // can't hold depth without a depth sensor
         gcs().send_text(MAV_SEVERITY_WARNING, "Depth sensor is not connected.");
         return false;
@@ -348,6 +346,7 @@ bool Sub::control_check_barometer()
         gcs().send_text(MAV_SEVERITY_WARNING, "Depth sensor error.");
         return false;
     }
+#endif
     return true;
 }
 
