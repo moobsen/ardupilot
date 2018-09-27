@@ -25,8 +25,9 @@
 #include <AP_HAL/AP_HAL.h>
 #include <AP_HAL/Util.h>
 #include <RC_Channel/RC_Channel.h>
-
+#include <AP_AHRS/AP_AHRS.h>
 #include <utility>
+#include <AP_Notify/AP_Notify.h>
 
 const AP_Param::GroupInfo AP_OSD::var_info[] = {
 
@@ -73,7 +74,7 @@ const AP_Param::GroupInfo AP_OSD::var_info[] = {
     // @Param: _OPTIONS
     // @DisplayName: OSD Options
     // @Description: This sets options that change the display
-    // @Bitmask: 0:UseDecimalPack
+    // @Bitmask: 0:UseDecimalPack, 1:InvertedWindPointer, 2:InvertedAHRoll
     // @User: Standard
     AP_GROUPINFO("_OPTIONS", 8, AP_OSD, options, OPTION_DECIMAL_PACK),
 
@@ -83,7 +84,59 @@ const AP_Param::GroupInfo AP_OSD::var_info[] = {
     // @User: Standard
     // @RebootRequired: True
     AP_GROUPINFO("_FONT", 9, AP_OSD, font_num, 0),
-    
+
+    // @Param: _V_OFFSET
+    // @DisplayName: OSD vertical offset
+    // @Description: Sets vertical offset of the osd inside image
+    // @Range: 0 31
+    // @User: Standard
+    // @RebootRequired: True
+    AP_GROUPINFO("_V_OFFSET", 10, AP_OSD, v_offset, 16),
+
+    // @Param: _H_OFFSET
+    // @DisplayName: OSD horizontal offset
+    // @Description: Sets horizontal offset of the osd inside image
+    // @Range: 0 63
+    // @User: Standard
+    // @RebootRequired: True
+    AP_GROUPINFO("_H_OFFSET", 11, AP_OSD, h_offset, 32),
+
+    // @Param: _W_RSSI
+    // @DisplayName: RSSI warn level (in %)
+    // @Description: Set level at which RSSI item will flash
+    // @Range: 0 99
+    // @User: Standard
+    AP_GROUPINFO("_W_RSSI", 12, AP_OSD, warn_rssi, 30),
+
+    // @Param: _W_NSAT
+    // @DisplayName: NSAT warn level
+    // @Description: Set level at which NSAT item will flash
+    // @Range: 1 30
+    // @User: Standard
+    AP_GROUPINFO("_W_NSAT", 13, AP_OSD, warn_nsat, 9),
+
+    // @Param: _W_BATVOLT
+    // @DisplayName: BAT_VOLT warn level
+    // @Description: Set level at which BAT_VOLT item will flash
+    // @Range: 0 100
+    // @User: Standard
+    AP_GROUPINFO("_W_BATVOLT", 14, AP_OSD, warn_batvolt, 10.0f),
+
+    // @Param: _UNITS
+    // @DisplayName: Display Units
+    // @Description: Sets the units to use in displaying items
+    // @Values: 0:Metric,1:Imperial,2:SI,3:Aviation
+    // @User: Standard
+    AP_GROUPINFO("_UNITS", 15, AP_OSD, units, 0),
+
+    // @Param: _MSG_TIME
+    // @DisplayName: Message display duration in seconds
+    // @Description: Sets message duration seconds
+    // @Range: 1 20
+    // @User: Standard
+    AP_GROUPINFO("_MSG_TIME", 16, AP_OSD, msgtime_s, 10),
+
+
     AP_GROUPEND
 };
 
@@ -132,7 +185,7 @@ void AP_OSD::init()
     }
     if (backend != nullptr) {
         // create thread as higher priority than IO
-        hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_OSD::osd_thread, void), "OSD", 512, AP_HAL::Scheduler::PRIORITY_IO, 1);
+        hal.scheduler->thread_create(FUNCTOR_BIND_MEMBER(&AP_OSD::osd_thread, void), "OSD", 1024, AP_HAL::Scheduler::PRIORITY_IO, 1);
     }
 }
 
@@ -147,7 +200,7 @@ void AP_OSD::osd_thread()
 void AP_OSD::update_osd()
 {
     backend->clear();
-
+    stats();
     update_current_screen();
 
     screen[current_screen].set_backend(backend);
@@ -155,6 +208,51 @@ void AP_OSD::update_osd()
 
     backend->flush();
 }
+
+//update maximums and totals
+void AP_OSD::stats()
+{
+    uint32_t now = AP_HAL::millis();
+    if (!AP_Notify::flags.armed) {
+        last_update_ms = now;
+        return;
+    }
+
+    // flight distance     
+    uint32_t delta_ms = now - last_update_ms;
+    last_update_ms = now;
+    
+    AP_AHRS &ahrs = AP::ahrs();
+    Vector2f v = ahrs.groundspeed_vector();
+    float speed = v.length();
+    if (speed < 2.0) {
+        speed = 0.0;
+    }
+    float dist_m = (speed * delta_ms)*0.001;
+    last_distance_m += dist_m;
+    
+    // maximum ground speed
+    max_speed_mps = fmaxf(max_speed_mps,speed);
+    
+    // maximum distance
+    Location loc;
+    if (ahrs.get_position(loc) && ahrs.home_is_set()) {
+        const Location &home_loc = ahrs.get_home();
+        float distance = get_distance(home_loc, loc);
+        max_dist_m = fmaxf(max_dist_m, distance);
+    }
+    
+    // maximum altitude
+    float alt;
+    AP::ahrs().get_relative_position_D_home(alt);
+    alt = -alt;
+    max_alt_m = fmaxf(max_alt_m, alt);
+    // maximum current
+    AP_BattMonitor &battery = AP_BattMonitor::battery();
+    float amps = battery.current_amps();
+    max_current_a = fmaxf(max_current_a, amps);
+}
+
 
 //Thanks to minimosd authors for the multiple osd screen idea
 void AP_OSD::update_current_screen()
@@ -227,3 +325,9 @@ void AP_OSD::next_screen()
     current_screen = t;
 }
 
+// set navigation information for display
+void AP_OSD::set_nav_info(NavInfo &navinfo)
+{
+    // do this without a lock for now
+    nav_info = navinfo;
+}

@@ -31,6 +31,7 @@ public:
         ARMING_CHECK_LOGGING    = 0x0400,
         ARMING_CHECK_SWITCH     = 0x0800,
         ARMING_CHECK_GPS_CONFIG = 0x1000,
+        ARMING_CHECK_SYSTEM     = 0x2000,
     };
 
     enum ArmingMethod {
@@ -55,7 +56,6 @@ public:
     // get bitmask of enabled checks
     uint16_t get_enabled_checks();
 
-
     // pre_arm_checks() is virtual so it can be modified in a vehicle specific subclass
     virtual bool pre_arm_checks(bool report);
 
@@ -67,6 +67,14 @@ public:
     // get expected magnetic field strength
     uint16_t compass_magfield_expected() const;
 
+    // rudder arming support
+    enum ArmingRudder {
+        ARMING_RUDDER_DISABLED  = 0,
+        ARMING_RUDDER_ARMONLY   = 1,
+        ARMING_RUDDER_ARMDISARM = 2
+    };
+    ArmingRudder get_rudder_arming_type() const { return (ArmingRudder)_rudder_arming.get(); }
+
     static const struct AP_Param::GroupInfo        var_info[];
 
 protected:
@@ -76,6 +84,7 @@ protected:
     AP_Int16                checks_to_perform;      // bitmask for which checks are required
     AP_Float                accel_error_threshold;
     AP_Float                _min_voltage[AP_BATT_MONITOR_MAX_INSTANCES];
+    AP_Int8                 _rudder_arming;
 
     // internal members
     bool                    armed:1;
@@ -105,6 +114,8 @@ protected:
 
     bool manual_transmitter_checks(bool report);
 
+    virtual bool system_checks(bool report);
+    
     bool servo_checks(bool report) const;
     bool rc_checks_copter_sub(bool display_failure, const RC_Channel *channels[4], const bool check_min_max = true) const;
 

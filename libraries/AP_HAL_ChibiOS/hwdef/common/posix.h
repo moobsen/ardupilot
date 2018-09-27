@@ -125,8 +125,8 @@ typedef struct utimbuf
    time_t modtime;      /* modification time */
 } utime_t;
 
-#if _USE_LFN != 0
-#define MAX_NAME_LEN _MAX_LFN 
+#if FF_USE_LFN != 0
+#define MAX_NAME_LEN FF_MAX_LFN 
 #else
 #define MAX_NAME_LEN 13
 #endif
@@ -388,7 +388,7 @@ int free_file_descriptor ( int fileno );
 int new_file_descriptor ( void );
 int posix_fopen_modes_to_open ( const char *mode );
 
-int fprintf(FILE *fp, const char *format, ...);
+int __wrap_fprintf(FILE *fp, const char *format, ...);
 
 #ifdef __cplusplus
 }

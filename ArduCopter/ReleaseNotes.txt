@@ -1,5 +1,86 @@
 ArduPilot Copter Release Notes:
 ------------------------------------------------------------------
+Copter 3.6.0-rc10 15-Sep-2018
+Changes from 3.6.0-rc9
+1) Arming/disarming from transmitter can be disabled with ARMING_RUDDER parameter
+2) ChibiOS fixes:
+    a) UART baud rate rounding fix (allow 921600 baud to work)
+    b) ADC fix to allow more simultaneous channels
+3) Bug Fixes:
+    a) Lean angle limit (to maintain altitude) always allows at least 10deg of lean
+    b) Attitude Control and PID initialisation fix to reduce twitches when switching modes
+------------------------------------------------------------------
+Copter 3.6.0-rc9 08-Sep-2018
+Changes from 3.6.0-rc8
+1) Landing gear can be operated using AIRFRAME_CONFIGURATION mavlink messages
+2) Support playing tunes received via MAVLink (i.e. from GCS)
+3) Bug Fixes:
+    a) Twitch reduced when entering Loiter at high speed
+    b) Safety switch state fix when Pixhawk/Cube I/O board reset in flight
+    c) External display fix to allow plugging into either I2C port
+------------------------------------------------------------------
+Copter 3.6.0-rc8 28-Aug-2018
+Changes from 3.6.0-rc7
+1) TeraRanger Tower EVO lidar support added
+2) PCA9685 and NCA5623 LED support added (replacements for Toshiba LED that is becoming end-of-life)
+3) Missions can start with DO_ commands (first NAV command must still be takeoff)
+4) ChibiOS fixes:
+    a) DShot and BLHeli stability improvements
+    b) added OmnibusNanoV6 bootloader
+5) Bug fixes:
+    a) AP_Stat only saves values to eeprom if they change (reduces CPU impact)
+    b) boost throttle respects safety switch
+    c) TradHeli reduce chance of tip-over when landed in Loiter
+------------------------------------------------------------------
+Copter 3.6.0-rc7 01-Aug-2018
+Changes from 3.6.0-rc6
+1) Compass rotation detection during calibration (see COMPASS_AUTO_ROT param)
+2) Tone alarm system consistent on all boards and support for playing tones from GCS
+3) OnBoard OSD improvements including showing dir to home (ChibiOS only)
+4) External compass support and microSD improvements for many ChibiOS-only boards including Kakute F4, Mateksys F405-Wing, Airbot F4, Crazyflie2, MindPXv2, Mini-PIX, Omnibus F7
+5) Bug fixes:
+    a) Battery monitor parameter fix to support BLHeli ESCs
+    b) Ch12 auxiliary function fixed
+    c) compassmot fix
+    d) Pixracer external compass fix
+    e) Pre-arm failure regarding RCx_TRIM removed for non critical channels
+    f) SBUS failsafe fix when receiver configured to "hold"
+    g) UART flow control fixes (ChibiOS only)
+    h) VL53L0X lidar fix
+6) Minor enhancements:
+    a) Compass device IDs (i.e. COMPASS_DEVID) set to zero if no compass detected
+    b) Fence action "Always Land" option added
+    c) Motor test maximum time extended to 10min
+    d) Receiver RSSI pwm input on AUX5,6
+    e) USB Serial port protocol default set to Mavlink2
+7) TradHeli fixes:
+    a) "Channel already assigned" message fixed
+    b) External gyro output method PWM based
+    c) Swash servo output properly accounts for servo trim
+------------------------------------------------------------------
+Copter 3.6.0-rc6 16-Jul-2018
+Changes from 3.6.0-rc5
+1) ChibiOS small enhancement and fixes:
+    a) KakuteF4 UART order fix
+    b) mRobotics bootloader and autobuild of binaries for AUAV2.1 and Pixracer
+    c) Mateksys F405-Wing uart reorder to better match labels on board
+2) Improve telemetry/GPS detection by only clearing UART when baud rate changes
+------------------------------------------------------------------
+Copter 3.6.0-rc5 07-Jul-2018
+Changes from 3.6.0-rc4
+1) Support new boards CubeBlack and HolyBro Pixhawk4-mini
+2) ChibiOS small enhancement and fixes:
+    a) make board serial number match NuttX
+    b) relay fix for Pixhawk boards by defaulting BRD_PWM_COUNT to 4 (same as NuttX)
+    c) MatekF405-Wing default compass orientation fix
+    d) Pixhawk4 default compass orientation fix
+    e) Omnibus F4 Pro I2C fix
+3) Bug fixes:
+    a) Telemetry baud rate fix
+    b) RC failsafe fix to RTL in all modes except Auto when FS_THR_ENABLE is continue-with-mission
+    c) waypoint navigation related safety check that PSC_POS_XY_P is non-zero 
+    d) aerofc-v1 update bootloader utility fix
+------------------------------------------------------------------
 Copter 3.6.0-rc4 05-Jul-2018
 Changes from 3.6.0-rc3
 1) add support for Cube Black and Cube Orange
@@ -99,7 +180,11 @@ Changes from 3.5.5
     i) WPNAV_LOIT_ params renamed to LOIT_    
     j) NTUN dataflash message renamed to PSC
 ------------------------------------------------------------------
-Copter 3.5.6-rc1 07-Jul-2018
+Copter 3.5.7 17-Jul-2018 / 3.5.7-rc1 12-Jul-2018
+Changes from 3.5.6
+1) Bug fix to ESC calibration safety switch issue 
+------------------------------------------------------------------
+Copter 3.5.6 11-Jul-2018 / 3.5.6-rc1 07-Jul-2018
 Changes from 3.5.5
 1) Safety switch fix to refuse presses once armed (BRD_SAFETYOPTION controls behaviour) 
 ------------------------------------------------------------------

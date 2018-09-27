@@ -78,7 +78,7 @@ void Copter::init_ardupilot()
     winch_init();
 
     // initialise notify system
-    notify.init(true);
+    notify.init();
     notify_flight_mode();
 
     // initialise battery monitor
@@ -137,9 +137,6 @@ void Copter::init_ardupilot()
 
     // motors initialised so parameters can be sent
     ap.initialised_params = true;
-
-    // initialise which outputs Servo and Relay events can use
-    ServoRelayEvents.set_channel_mask(~motors->get_motor_mask());
 
     relay.init();
 
@@ -251,10 +248,8 @@ void Copter::init_ardupilot()
 #endif
     DataFlash.setVehicle_Startup_Log_Writer(FUNCTOR_BIND(&copter, &Copter::Log_Write_Vehicle_Startup_Messages, void));
 
-    // initialise the flight mode and aux switch
-    // ---------------------------
-    reset_control_switch();
-    init_aux_switches();
+    // initialise rc channels including setting mode
+    rc().init();
 
     startup_INS_ground();
 
@@ -280,9 +275,6 @@ void Copter::init_ardupilot()
     // disable safety if requested
     BoardConfig.init_safety();
 
-    // default enable RC override
-    copter.ap.rc_override_enable = true;
-    
     hal.console->printf("\nReady to FLY ");
 
     // flag that initialisation has completed

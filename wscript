@@ -67,6 +67,11 @@ def options(opt):
         default=False,
         help='Configure as debug variant.')
 
+    g.add_option('--enable-asserts',
+        action='store_true',
+        default=False,
+        help='enable OS level asserts.')
+    
     g.add_option('--bootloader',
         action='store_true',
         default=False,
@@ -150,11 +155,12 @@ configuration in order to save typing.
 def _collect_autoconfig_files(cfg):
     for m in sys.modules.values():
         paths = []
-        if hasattr(m, '__file__'):
+        if hasattr(m, '__file__') and m.__file__ is not None:
             paths.append(m.__file__)
         elif hasattr(m, '__path__'):
             for p in m.__path__:
-                paths.append(p)
+                if p is not None:
+                    paths.append(p)
 
         for p in paths:
             if p in cfg.files or not os.path.isfile(p):
@@ -176,6 +182,7 @@ def configure(cfg):
 
     cfg.env.BOARD = cfg.options.board
     cfg.env.DEBUG = cfg.options.debug
+    cfg.env.ENABLE_ASSERTS = cfg.options.enable_asserts
     cfg.env.BOOTLOADER = cfg.options.bootloader
 
     # Allow to differentiate our build from the make build
@@ -383,7 +390,9 @@ def _build_recursion(bld):
         common_dirs_patterns,
         excl=common_dirs_excl,
     )
-
+    if bld.env.IOMCU_FW is not None:
+        if bld.env.IOMCU_FW:
+            dirs_to_recurse.append('libraries/AP_IOMCU/iofirmware')
     for p in hal_dirs_patterns:
         dirs_to_recurse += collect_dirs_to_recurse(
             bld,
@@ -459,7 +468,7 @@ ardupilotwaf.build_command('check-all',
     doc='shortcut for `waf check --alltests`',
 )
 
-for name in ('antennatracker', 'copter', 'heli', 'plane', 'rover', 'sub', 'bootloader'):
+for name in ('antennatracker', 'copter', 'heli', 'plane', 'rover', 'sub', 'bootloader','iofirmware'):
     ardupilotwaf.build_command(name,
         program_group_list=name,
         doc='builds %s programs' % name,

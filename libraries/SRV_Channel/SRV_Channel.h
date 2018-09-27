@@ -301,6 +301,9 @@ public:
     // adjust trim of a channel by a small increment
     void adjust_trim(SRV_Channel::Aux_servo_function_t function, float v);
 
+    // set MIN/MAX parameters for a function
+    static void set_output_min_max(SRV_Channel::Aux_servo_function_t function, uint16_t min_pwm, uint16_t max_pwm);
+    
     // save trims
     void save_trim(void);
 
@@ -309,11 +312,8 @@ public:
         flags.k_throttle_reversible = true;
     }
 
-    // set all outputs to the TRIM value
-    static void output_trim_all(void);
-
     // setup IO failsafe for all channels to trim
-    static void setup_failsafe_trim_all(void);
+    static void setup_failsafe_trim_all_non_motors(void);
 
     // set output for all channels matching the given function type, allow radio_trim to center servo
     static void set_output_pwm_trimmed(SRV_Channel::Aux_servo_function_t function, int16_t value);

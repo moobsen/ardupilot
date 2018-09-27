@@ -31,7 +31,7 @@ public:
     static AP_OSD_Backend *probe(AP_OSD &osd);
 
     //draw given text to framebuffer
-    void write(uint8_t x, uint8_t y, const char* text, uint8_t char_attr) override;
+    void write(uint8_t x, uint8_t y, const char* text) override;
 
     //initilize display port and underlying hardware
     bool init() override;
@@ -60,9 +60,8 @@ private:
 
     // scaling factor to make it easier to read
     static const uint8_t char_scale = 2;
-    
+
     uint8_t buffer[video_lines][video_cols];
-    uint8_t attr[video_lines][video_cols];
 
     void update_thread();
     static void *update_thread_start(void *obj);

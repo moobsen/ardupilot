@@ -57,10 +57,8 @@ void Rover::init_ardupilot()
 #endif
 
     // initialise notify system
-    notify.init(false);
+    notify.init();
     notify_mode(control_mode);
-
-    ServoRelayEvents.set_channel_mask(0xFFF0);
 
     battery.init();
 
@@ -78,6 +76,10 @@ void Rover::init_ardupilot()
 #endif
 #if DEVO_TELEM_ENABLED == ENABLED
     devo_telemetry.init(serial_manager);
+#endif
+
+#if OSD_ENABLED == ENABLED
+    osd.init();
 #endif
 
 #if LOGGING_ENABLED == ENABLED
@@ -146,11 +148,8 @@ void Rover::init_ardupilot()
     }
     set_mode(*initial_mode, MODE_REASON_INITIALISED);
 
-
-    // set the correct flight mode
-    // ---------------------------
-    reset_control_switch();
-    init_aux_switch();
+    // initialise rc channels
+    rc().init();
 
     // disable safety if requested
     BoardConfig.init_safety();
@@ -294,17 +293,13 @@ void Rover::notify_mode(const Mode *mode)
  */
 uint8_t Rover::check_digital_pin(uint8_t pin)
 {
-    const int8_t dpin = hal.gpio->analogPinToDigitalPin(pin);
-    if (dpin == -1) {
-        return 0;
-    }
     // ensure we are in input mode
-    hal.gpio->pinMode(dpin, HAL_GPIO_INPUT);
+    hal.gpio->pinMode(pin, HAL_GPIO_INPUT);
 
     // enable pullup
-    hal.gpio->write(dpin, 1);
+    hal.gpio->write(pin, 1);
 
-    return hal.gpio->read(dpin);
+    return hal.gpio->read(pin);
 }
 
 /*
@@ -336,6 +331,9 @@ bool Rover::arm_motors(AP_Arming::ArmingMethod method)
 
     // Set the SmartRTL home location. If activated, SmartRTL will ultimately try to land at this point
     g2.smart_rtl.set_home(true);
+
+    // initialize simple mode heading
+    rover.mode_simple.init_heading();
 
     change_arm_state();
     return true;

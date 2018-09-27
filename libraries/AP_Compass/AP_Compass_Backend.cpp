@@ -6,10 +6,10 @@
 
 extern const AP_HAL::HAL& hal;
 
-AP_Compass_Backend::AP_Compass_Backend(Compass &compass) :
-    _compass(compass)
+AP_Compass_Backend::AP_Compass_Backend()
+    : _compass(AP::compass())
 {
-    _sem = hal.util->new_semaphore();    
+    _sem = hal.util->new_semaphore();
 }
 
 void AP_Compass_Backend::rotate_field(Vector3f &mag, uint8_t instance)
@@ -130,6 +130,15 @@ uint8_t AP_Compass_Backend::register_compass(void) const
 void AP_Compass_Backend::set_dev_id(uint8_t instance, uint32_t dev_id)
 {
     _compass._state[instance].dev_id.set_and_notify(dev_id);
+    _compass._state[instance].detected_dev_id = dev_id;
+}
+
+/*
+  save dev_id, used by SITL
+*/
+void AP_Compass_Backend::save_dev_id(uint8_t instance)
+{
+    _compass._state[instance].dev_id.save();
 }
 
 /*
@@ -194,3 +203,8 @@ bool AP_Compass_Backend::field_ok(const Vector3f &field)
     return ret;
 }
 
+
+enum Rotation AP_Compass_Backend::get_board_orientation(void) const
+{
+    return _compass._board_orientation;
+}

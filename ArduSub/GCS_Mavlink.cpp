@@ -1225,7 +1225,7 @@ void Sub::mavlink_delay_cb()
     }
     if (tnow - last_50hz > 20) {
         last_50hz = tnow;
-        gcs_check_input();
+        gcs_update();
         gcs_data_stream_send();
         gcs_send_deferred();
         notify.update();
@@ -1249,28 +1249,14 @@ void Sub::gcs_data_stream_send()
 /*
  *  look for incoming commands on the GCS links
  */
-void Sub::gcs_check_input()
+void Sub::gcs_update()
 {
     gcs().update();
-}
-
-Compass *GCS_MAVLINK_Sub::get_compass() const
-{
-    return &sub.compass;
 }
 
 AP_Mission *GCS_MAVLINK_Sub::get_mission()
 {
     return &sub.mission;
-}
-
-AP_Camera *GCS_MAVLINK_Sub::get_camera() const
-{
-#if CAMERA == ENABLED
-    return &sub.camera;
-#else
-    return nullptr;
-#endif
 }
 
 AP_Rally *GCS_MAVLINK_Sub::get_rally() const

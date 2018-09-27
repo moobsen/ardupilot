@@ -2,6 +2,10 @@
 
 #include <AP_Common/AP_Common.h>
 
+#include "RC_Channel.h"
+#include "AC_Sprayer/AC_Sprayer.h"
+#include "AP_Rally.h"
+
 // Global parameter class.
 //
 class Parameters {
@@ -159,7 +163,7 @@ public:
         k_param_mode4,
         k_param_mode5,
         k_param_mode6,
-        k_param_aux_channel,
+        k_param_aux_channel_old,
 
         //
         // 220: Waypoint data
@@ -199,6 +203,7 @@ public:
         k_param_barometer,
         k_param_notify,
         k_param_button,
+        k_param_osd,
 
         k_param_DataFlash = 253,  // Logging Group
 
@@ -261,7 +266,6 @@ public:
     AP_Int8     mode4;
     AP_Int8     mode5;
     AP_Int8     mode6;
-    AP_Int8     aux_channel;
 
     // Waypoints
     //
@@ -290,7 +294,7 @@ public:
     AP_Int8 sysid_enforce;
 
     // RC input channels
-    RC_Channels rc_channels;
+    RC_Channels_Rover rc_channels;
 
     // control over servo output ranges
     SRV_Channels servo_channels;
@@ -310,6 +314,7 @@ public:
 
     // wheel encoders
     AP_WheelEncoder wheel_encoder;
+    AP_WheelRateControl wheel_rate_control;
 
     // steering and throttle controller
     AR_AttitudeControl attitude_control;
@@ -347,6 +352,24 @@ public:
 
     // pitch/roll angle for crash check
     AP_Int8 crash_angle;
+
+    // follow mode library
+    AP_Follow follow;
+
+    // frame type for vehicle (used for vectored motor vehicles and custom motor configs)
+    AP_Int8 frame_type;
+
+    // loiter type
+    AP_Int8 loit_type;
+
+    // Sprayer
+    AC_Sprayer sprayer;
+
+    // Rally point library
+    AP_Rally_Rover rally;
+
+    // Simple mode types
+    AP_Int8 simple_type;
 };
 
 extern const AP_Param::Info var_info[];

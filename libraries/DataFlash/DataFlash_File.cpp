@@ -183,11 +183,13 @@ bool DataFlash_File::log_exists(const uint16_t lognum) const
     return ret;
 }
 
-void DataFlash_File::periodic_1Hz(const uint32_t now)
+void DataFlash_File::periodic_1Hz()
 {
     if (!io_thread_alive()) {
-        if (io_thread_warning_decimation_counter == 0) {
-            gcs().send_text(MAV_SEVERITY_CRITICAL, "No IO Thread Heartbeat (%s)", last_io_operation);
+        if (io_thread_warning_decimation_counter == 0 && _initialised) {
+            // we don't print this error unless we did initialise. When _initialised is set to true
+            // we register the IO timer callback
+            gcs().send_text(MAV_SEVERITY_CRITICAL, "DataFlash: stuck thread (%s)", last_io_operation);
         }
         if (io_thread_warning_decimation_counter++ > 57) {
             io_thread_warning_decimation_counter = 0;
@@ -204,7 +206,7 @@ void DataFlash_File::periodic_1Hz(const uint32_t now)
     df_stats_log();
 }
 
-void DataFlash_File::periodic_fullrate(const uint32_t now)
+void DataFlash_File::periodic_fullrate()
 {
     DataFlash_Backend::push_log_blocks();
 }
@@ -552,11 +554,15 @@ bool DataFlash_File::_WritePrioritisedBlock(const void *pBuffer, uint16_t size, 
         // writing format messages out.  It can always get back to us
         // with more messages later, so let's leave room for other
         // things:
-        if (space < non_messagewriter_message_reserved_space()) {
+        const uint32_t now = AP_HAL::millis();
+        const bool must_dribble = (now - last_messagewrite_message_sent) > 100;
+        if (!must_dribble &&
+            space < non_messagewriter_message_reserved_space()) {
             // this message isn't dropped, it will be sent again...
             semaphore->give();
             return false;
         }
+        last_messagewrite_message_sent = now;
     } else {
         // we reserve some amount of space for critical messages:
         if (!is_critical && space < critical_message_reserved_space()) {

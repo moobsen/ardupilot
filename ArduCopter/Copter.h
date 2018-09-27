@@ -38,7 +38,6 @@
 #include <AP_SerialManager/AP_SerialManager.h>   // Serial manager library
 #include <AP_GPS/AP_GPS.h>             // ArduPilot GPS library
 #include <DataFlash/DataFlash.h>          // ArduPilot Mega Flash Memory Library
-#include <AP_ADC/AP_ADC.h>             // ArduPilot Mega Analog to Digital Converter Library
 #include <AP_Baro/AP_Baro.h>
 #include <AP_Compass/AP_Compass.h>         // ArduPilot Mega Magnetometer Library
 #include <AP_Math/AP_Math.h>            // ArduPilot Mega Vector/Matrix math Library
@@ -56,7 +55,6 @@
 #include <AC_AttitudeControl/AC_AttitudeControl_Multi.h> // Attitude control library
 #include <AC_AttitudeControl/AC_AttitudeControl_Heli.h> // Attitude control library for traditional helicopter
 #include <AC_AttitudeControl/AC_PosControl.h>      // Position control library
-#include <RC_Channel/RC_Channel.h>         // RC Channel Library
 #include <AP_Motors/AP_Motors.h>          // AP Motors library
 #include <AP_Stats/AP_Stats.h>     // statistics library
 #include <AP_RSSI/AP_RSSI.h>                   // RSSI Library
@@ -88,6 +86,8 @@
 // Configuration
 #include "defines.h"
 #include "config.h"
+
+#include "RC_Channel.h"         // RC Channel Library
 
 #include "GCS_Mavlink.h"
 #include "GCS_Copter.h"
@@ -171,6 +171,9 @@
 #endif
 
 // Local modules
+#ifdef USER_PARAMS_ENABLED
+#include "UserParameters.h"
+#endif
 #include "Parameters.h"
 #if ADSB_ENABLED == ENABLED
 #include "avoidance_adsb.h"
@@ -195,6 +198,8 @@ public:
 #endif
     friend class AP_Arming_Copter;
     friend class ToyMode;
+    friend class RC_Channel_Copter;
+    friend class RC_Channels_Copter;
 
     Copter(void);
 
@@ -234,6 +239,7 @@ private:
 
     // flight modes convenience array
     AP_Int8 *flight_modes;
+    const uint8_t num_flight_modes = 6;
 
     AP_Baro barometer;
     Compass compass;
@@ -336,7 +342,7 @@ private:
             uint8_t in_arming_delay         : 1; // 24      // true while we are armed but waiting to spin motors
             uint8_t initialised_params      : 1; // 25      // true when the all parameters have been initialised. we cannot send parameters to the GCS until this is done
             uint8_t compass_init_location   : 1; // 26      // true when the compass's initial location has been set
-            uint8_t rc_override_enable      : 1; // 27      // aux switch rc_override is allowed
+            uint8_t unused2                 : 1; // 27      // aux switch rc_override is allowed
             uint8_t armed_with_switch       : 1; // 28      // we armed using a arming switch
         };
         uint32_t value;
@@ -353,21 +359,6 @@ private:
 
     control_mode_t prev_control_mode;
     mode_reason_t prev_control_mode_reason = MODE_REASON_UNKNOWN;
-
-    // Structure used to detect changes in the flight mode control switch
-    struct {
-        int8_t debounced_switch_position;   // currently used switch position
-        int8_t last_switch_position;        // switch position in previous iteration
-        uint32_t last_edge_time_ms;         // system time that switch position was last changed
-    } control_switch_state;
-
-    // de-bounce counters for switches.cpp
-    struct debounce {
-        uint8_t count;
-        uint8_t ch_flag;
-    } aux_debounce[(CH_12 - CH_7)+1];
-    // altitude below which we do no navigation in auto takeoff
-    float auto_takeoff_no_nav_alt_cm;
 
     RCMapper rcmap;
 
@@ -390,7 +381,6 @@ private:
 
         int8_t radio_counter;            // number of iterations with throttle below throttle_fs_value
 
-        uint8_t rc_override_active  : 1; // true if rc control are overwritten by ground station
         uint8_t radio               : 1; // A status flag for the radio failsafe
         uint8_t gcs                 : 1; // A status flag for the ground station failsafe
         uint8_t ekf                 : 1; // true if ekf failsafe has occurred
@@ -564,7 +554,7 @@ private:
 
     // Precision Landing
 #if PRECISION_LANDING == ENABLED
-    AC_PrecLand precland{ahrs};
+    AC_PrecLand precland;
 #endif
 
     // Pilot Input Management Library
@@ -667,6 +657,7 @@ private:
     void rc_loop();
     void throttle_loop();
     void update_batt_compass(void);
+    void read_aux_all(void);
     void fourhundred_hz_logging();
     void ten_hz_logging_loop();
     void twentyfive_hz_logging();
@@ -746,7 +737,6 @@ private:
     void set_mode_SmartRTL_or_RTL(mode_reason_t reason);
     void set_mode_SmartRTL_or_land_with_pause(mode_reason_t reason);
     bool should_disarm_on_failsafe();
-    void update_events();
 
     // failsafe.cpp
     void failsafe_enable();
@@ -768,7 +758,7 @@ private:
     void send_rpm(mavlink_channel_t chan);
     void send_pid_tuning(mavlink_channel_t chan);
     void gcs_data_stream_send(void);
-    void gcs_check_input(void);
+    void gcs_update(void);
 
     // heli.cpp
     void heli_init();
@@ -874,7 +864,7 @@ private:
     bool rangefinder_alt_ok();
     void rpm_update();
     void init_compass();
-    void compass_accumulate(void);
+    void init_compass_location();
     void init_optflow();
     void update_optical_flow(void);
     void compass_cal_update(void);
@@ -896,15 +886,6 @@ private:
 
     // switches.cpp
     void read_control_switch();
-    bool check_if_auxsw_mode_used(uint8_t auxsw_mode_check);
-    bool check_duplicate_auxsw(void);
-    void reset_control_switch();
-    uint8_t read_3pos_switch(uint8_t chan);
-    void read_aux_switches();
-    void init_aux_switches();
-    void init_aux_switch_function(int8_t ch_option, uint8_t ch_flag);
-    void do_aux_switch_function(int8_t ch_function, uint8_t ch_flag);
-    bool debounce_aux_switch(uint8_t chan, uint8_t ch_flag);
     void save_trim();
     void auto_trim();
 
@@ -921,9 +902,6 @@ private:
     const char* get_frame_string();
     void allocate_motors(void);
 
-    void auto_takeoff_set_start_alt(void);
-    void auto_takeoff_attitude_run(float target_yaw_rate);
-
     // terrain.cpp
     void terrain_update();
     void terrain_logging();
@@ -939,6 +917,13 @@ private:
     void userhook_MediumLoop();
     void userhook_SlowLoop();
     void userhook_SuperSlowLoop();
+    void userhook_auxSwitch1(uint8_t ch_flag);
+    void userhook_auxSwitch2(uint8_t ch_flag);
+    void userhook_auxSwitch3(uint8_t ch_flag);
+
+#if OSD_ENABLED == ENABLED
+    void publish_osd_info();
+#endif
 
 #include "mode.h"
 

@@ -19,10 +19,6 @@
 #include "UARTDriver.h"
 #include "Util.h"
 
-#if HAL_WITH_UAVCAN
-#include "CAN.h"
-#endif
-
 using namespace Linux;
 
 extern const AP_HAL::HAL& hal;
@@ -32,7 +28,6 @@ extern const AP_HAL::HAL& hal;
 #define APM_LINUX_UART_PRIORITY         14
 #define APM_LINUX_RCIN_PRIORITY         13
 #define APM_LINUX_MAIN_PRIORITY         12
-#define APM_LINUX_TONEALARM_PRIORITY    11
 #define APM_LINUX_IO_PRIORITY           10
 
 #define APM_LINUX_TIMER_RATE            1000
@@ -43,11 +38,9 @@ extern const AP_HAL::HAL& hal;
     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_DARK || \
     CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXFMINI
 #define APM_LINUX_RCIN_RATE             2000
-#define APM_LINUX_TONEALARM_RATE        100
 #define APM_LINUX_IO_RATE               50
 #else
 #define APM_LINUX_RCIN_RATE             100
-#define APM_LINUX_TONEALARM_RATE        100
 #define APM_LINUX_IO_RATE               50
 #endif
 
@@ -63,6 +56,30 @@ extern const AP_HAL::HAL& hal;
 Scheduler::Scheduler()
 { }
 
+
+void Scheduler::init_realtime()
+{
+#if APM_BUILD_TYPE(APM_BUILD_Replay)
+    // we don't run Replay in real-time...
+    return;
+#endif
+#if APM_BUILD_TYPE(APM_BUILD_UNKNOWN)
+    // we opportunistically run examples/tools in realtime
+    if (geteuid() != 0) {
+        fprintf(stderr, "WARNING: not running as root. Will not use realtime scheduling\n");
+        return;
+    }
+#endif
+
+    mlockall(MCL_CURRENT|MCL_FUTURE);
+
+    struct sched_param param = { .sched_priority = APM_LINUX_MAIN_PRIORITY };
+    if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
+        AP_HAL::panic("Scheduler: failed to set scheduling parameters: %s",
+                      strerror(errno));
+    }
+}
+
 void Scheduler::init()
 {
     int ret;
@@ -76,22 +93,12 @@ void Scheduler::init()
         SCHED_THREAD(timer, TIMER),
         SCHED_THREAD(uart, UART),
         SCHED_THREAD(rcin, RCIN),
-        SCHED_THREAD(tonealarm, TONEALARM),
         SCHED_THREAD(io, IO),
     };
 
     _main_ctx = pthread_self();
 
-#if !APM_BUILD_TYPE(APM_BUILD_Replay)
-    // we don't run Replay in real-time...
-    mlockall(MCL_CURRENT|MCL_FUTURE);
-
-    struct sched_param param = { .sched_priority = APM_LINUX_MAIN_PRIORITY };
-    if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
-        AP_HAL::panic("Scheduler: failed to set scheduling parameters: %s",
-                      strerror(errno));
-    }
-#endif
+    init_realtime();
 
     /* set barrier to N + 1 threads: worker threads + main */
     unsigned n_threads = ARRAY_SIZE(sched_table) + 1;
@@ -123,13 +130,11 @@ void Scheduler::_debug_stack()
                 "\ttimer = %zu\n"
                 "\tio    = %zu\n"
                 "\trcin  = %zu\n"
-                "\tuart  = %zu\n"
-                "\ttone  = %zu\n",
+                "\tuart  = %zu\n",
                 _timer_thread.get_stack_usage(),
                 _io_thread.get_stack_usage(),
                 _rcin_thread.get_stack_usage(),
-                _uart_thread.get_stack_usage(),
-                _tonealarm_thread.get_stack_usage());
+                _uart_thread.get_stack_usage());
         _last_stack_debug_msec = now;
     }
 }
@@ -227,16 +232,6 @@ void Scheduler::_timer_task()
     }
 
     _in_timer_proc = false;
-
-#if HAL_WITH_UAVCAN
-#if CONFIG_HAL_BOARD == HAL_BOARD_LINUX
-    for (i = 0; i < MAX_NUMBER_OF_CAN_INTERFACES; i++) {
-        if(hal.can_mgr[i] != nullptr) {
-            CANManager::from(hal.can_mgr[i])->_timer_tick();
-        }
-    }
-#endif
-#endif
 }
 
 void Scheduler::_run_io(void)
@@ -278,12 +273,6 @@ void Scheduler::_rcin_task()
 void Scheduler::_uart_task()
 {
     _run_uarts();
-}
-
-void Scheduler::_tonealarm_task()
-{
-    // process tone command
-    Util::from(hal.util)->_toneAlarm_timer_tick();
 }
 
 void Scheduler::_io_task()
@@ -345,24 +334,11 @@ void Scheduler::teardown()
     _io_thread.stop();
     _rcin_thread.stop();
     _uart_thread.stop();
-    _tonealarm_thread.stop();
 
     _timer_thread.join();
     _io_thread.join();
     _rcin_thread.join();
     _uart_thread.join();
-    _tonealarm_thread.join();
-}
-
-/*
-  trampoline for thread create
-*/
-void *Scheduler::thread_create_trampoline(void *ctx)
-{
-    AP_HAL::MemberProc *t = (AP_HAL::MemberProc *)ctx;
-    (*t)();
-    free(t);
-    return nullptr;
 }
 
 /*
@@ -370,12 +346,10 @@ void *Scheduler::thread_create_trampoline(void *ctx)
 */
 bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_t stack_size, priority_base base, int8_t priority)
 {
-    // take a copy of the MemberProc, it is freed after thread exits
-    AP_HAL::MemberProc *tproc = (AP_HAL::MemberProc *)malloc(sizeof(proc));
-    if (!tproc) {
+    Thread *thread = new Thread{(Thread::task_t)proc};
+    if (!thread) {
         return false;
     }
-    *tproc = proc;
 
     uint8_t thread_priority = APM_LINUX_IO_PRIORITY;
     static const struct {
@@ -399,21 +373,20 @@ bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_
             break;
         }
     }
-    pthread_t thread;
-    pthread_attr_t thread_attr;
-    struct sched_param param;
 
-    pthread_attr_init(&thread_attr);
-    pthread_attr_setstacksize(&thread_attr, stack_size);
+    // Add 256k to HAL-independent requested stack size
+    thread->set_stack_size(256 * 1024 + stack_size);
 
-    param.sched_priority = thread_priority;
-    (void)pthread_attr_setschedparam(&thread_attr, &param);
-    pthread_attr_setschedpolicy(&thread_attr, SCHED_FIFO);
+    /*
+     * We should probably store the thread handlers and join() when exiting,
+     * but let's the thread manage itself for now.
+     */
+    thread->set_auto_free(true);
 
-    if (pthread_create(&thread, &thread_attr, thread_create_trampoline, tproc) != 0) {
-        free(tproc);
+    if (!thread->start(name, SCHED_FIFO, thread_priority)) {
+        delete thread;
         return false;
     }
-    pthread_setname_np(thread, name);
+
     return true;
 }

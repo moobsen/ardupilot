@@ -64,7 +64,7 @@ void Sub::init_ardupilot()
 #endif
 
     // initialise notify system
-    notify.init(true);
+    notify.init();
 
     // initialise battery monitor
     battery.init();
@@ -87,12 +87,12 @@ void Sub::init_ardupilot()
 
     gcs().set_dataflash(&DataFlash);
 
+    // initialise rc channels including setting mode
+    rc().init();
+
     init_rc_in();               // sets up rc channels from radio
     init_rc_out();              // sets up motors and output to escs
     init_joystick();            // joystick initialization
-
-    // initialise which outputs Servo and Relay events can use
-    ServoRelayEvents.set_channel_mask(~motors.get_motor_mask());
 
     relay.init();
 

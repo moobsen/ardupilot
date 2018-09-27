@@ -146,11 +146,6 @@
 /* HMC5843 can be an external compass */
 #define HAL_COMPASS_HMC5843_I2C_BUS 1
 #define HAL_COMPASS_HMC5843_I2C_ADDR 0x1E
-#define HAL_GPIO_A_LED_PIN        16
-#define HAL_GPIO_B_LED_PIN        16
-#define HAL_GPIO_C_LED_PIN        16
-#define HAL_GPIO_LED_ON           LOW
-#define HAL_GPIO_LED_OFF          HIGH
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBRAIN2
 #define HAL_INS_DEFAULT HAL_INS_MPU9250_SPI
 #define HAL_INS_DEFAULT_ROTATION ROTATION_YAW_270
@@ -204,7 +199,6 @@
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BLUE
 #define HAL_GPIO_A_LED_PIN 66
 #define HAL_GPIO_B_LED_PIN 67
-#define HAL_GPIO_C_LED_PIN 67
 #define HAL_GPIO_LED_ON    HIGH
 #define HAL_GPIO_LED_OFF   LOW
 #define HAL_INS_DEFAULT HAL_INS_MPU9250_I2C
@@ -359,7 +353,7 @@
 #endif
 
 #define HAL_HAVE_BOARD_VOLTAGE 1
-#define HAL_HAVE_SAFETY_SWITCH 1
+#define HAL_HAVE_SAFETY_SWITCH 0
 
 #ifndef AP_STATEDIR
 #define HAL_BOARD_STATE_DIRECTORY "/var/lib/ardupilot"
@@ -382,3 +376,21 @@
 #ifndef HAL_BOARD_CAN_IFACE_NAME
 #define HAL_BOARD_CAN_IFACE_NAME "can0"
 #endif
+
+// if bus masks are not setup above then use these defaults
+#ifndef HAL_LINUX_I2C_BUS_MASK
+#define HAL_LINUX_I2C_BUS_MASK 0xFFFF
+#endif
+
+#ifndef HAL_LINUX_I2C_INTERNAL_BUS_MASK
+#define HAL_LINUX_I2C_INTERNAL_BUS_MASK 0xFFFF
+#endif
+
+#ifndef HAL_LINUX_I2C_EXTERNAL_BUS_MASK
+#define HAL_LINUX_I2C_EXTERNAL_BUS_MASK 0xFFFF
+#endif
+
+#include <AP_HAL_Linux/Semaphores.h>
+#define HAL_Semaphore Linux::Semaphore
+#define HAL_Semaphore_Recursive Linux::Semaphore_Recursive
+

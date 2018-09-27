@@ -3,9 +3,13 @@
 #include "AP_BattMonitor_SMBus.h"
 #include "AP_BattMonitor_Bebop.h"
 #include "AP_BattMonitor_BLHeliESC.h"
+
+#include <AP_HAL/AP_HAL.h>
+
 #if HAL_WITH_UAVCAN
 #include "AP_BattMonitor_UAVCAN.h"
 #endif
+
 #include <AP_Vehicle/AP_Vehicle_Type.h>
 #include <DataFlash/DataFlash.h>
 #include <GCS_MAVLink/GCS.h>
@@ -198,10 +202,6 @@ AP_BattMonitor::read()
             drivers[i]->read();
             drivers[i]->update_resistance_estimate();
         }
-    }
-
-    if (get_type() != AP_BattMonitor_Params::BattMonitor_TYPE_NONE) {
-        AP_Notify::flags.battery_voltage = voltage();
     }
 
     DataFlash_Class *df = DataFlash_Class::instance();

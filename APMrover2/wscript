@@ -24,6 +24,8 @@ def build(bld):
             'AC_Avoidance',
             'AC_AttitudeControl',
             'AP_Devo_Telem',
+            'AP_Follow',
+            'AP_OSD',
         ],
     )
 
