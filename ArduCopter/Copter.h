@@ -294,12 +294,6 @@ private:
     OpticalFlow optflow{ahrs};
 #endif
 
-    // gnd speed limit required to observe optical flow sensor limits
-    float ekfGndSpdLimit;
-
-    // scale factor applied to velocity controller gain to prevent optical flow noise causing excessive angle demand noise
-    float ekfNavVelGainScaler;
-
     // system time in milliseconds of last recorded yaw reset from ekf
     uint32_t ekfYawReset_ms;
     int8_t ekf_primary_core;
@@ -706,6 +700,7 @@ private:
 
     // crash_check.cpp
     void crash_check();
+    void thrust_loss_check();
     void parachute_check();
     void parachute_release();
     void parachute_manual_release();
@@ -990,6 +985,9 @@ private:
 #endif
 #if !HAL_MINIMIZE_FEATURES && OPTFLOW == ENABLED
     ModeFlowHold mode_flowhold;
+#endif
+#if MODE_ZIGZAG_ENABLED == ENABLED
+    ModeZigZag mode_zigzag;
 #endif
 
     // mode.cpp
